@@ -36,6 +36,41 @@ Unlike every other nb-web plugin, NbWeb-hledger is not primarily a data viewer �
    ```
 4. Create `.nb-hledger.json` in a notebook directory — see [setup guide](https://github.com/linuxcaffe/nb-web/blob/main/plugins/requirements/hledger-setup.md)
 
+## chart — Financial Charts codeblock
+
+NbWeb-hledger provides the `chart` codeblock renderer — interactive Chart.js visualisations driven by hledger data.
+
+````markdown
+```chart
+cashflow thisyear
+```
+````
+
+**Report types:**
+
+| Report | Chart | Description |
+|--------|-------|-------------|
+| `cashflow` | bar + line | Monthly income vs expenses, cumulative net change |
+| `networth` | line | Assets, liabilities, and net worth over time |
+| `expenses` | stacked bar | Monthly expense breakdown by category |
+| `expenses-pie` | doughnut | Expense share by category for the period |
+| `assets-pie` | doughnut | Asset allocation snapshot |
+| `income-pie` | doughnut | Income sources for the period |
+
+**Period** is any hledger period expression: `thismonth`, `thisyear`, `lastyear`, `last3months`, `2025`, `2025-01..2025-06`, etc.
+
+**`depth:N`** controls account depth for category breakdown (default `2`):
+
+````markdown
+```chart
+expenses thisyear depth:3
+```
+````
+
+**Header controls:** `▾/▸` collapse · `mo / yr / prev` quick period switcher · `◕/▦` doughnut ↔ bar toggle (on `*-pie` and `expenses`) · `↺` force reload.
+
+---
+
 ## License
 
 [AGPL v3](LICENSE) — copyleft applies to network use (SaaS)
