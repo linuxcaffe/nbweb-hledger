@@ -71,6 +71,20 @@ expenses thisyear depth:3
 
 ---
 
+## chart — Implementation notes
+
+**Revenue amounts are negative** in `hledger bal` output — must negate the income series for cashflow chart (otherwise income bars point down).
+
+**CSV parsing** — `_hl_bal_csv()` skips title rows (all values after col 0 are empty). Handles both monthly format (one column per month) and period-total format (single `balance` column). Without `--monthly`, the CSV has a single balance column — pie chart code takes `amounts[0]`.
+
+**`window.NbNav` scope** — `NbNav` is declared `const` not `var`, so it's not on `window`. Use `typeof NbNav !== 'undefined' ? NbNav.notebook : ''` rather than `window.NbNav?.notebook`.
+
+**Doughnut sizing** — use `aspectRatio: 1.5` to keep doughnut height ~30% smaller than Chart.js default square.
+
+**Sequential rendering** — chart blocks use `for...of` (not `Promise.all`) because Chart.js touches shared canvas state; parallel rendering causes conflicts.
+
+---
+
 ## License
 
 [AGPL v3](LICENSE) — copyleft applies to network use (SaaS)
