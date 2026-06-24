@@ -702,6 +702,16 @@ function _accountContent(acct, allAccounts, notebook) {
         const slug = _accountSlug(parentPath);
         lines.push(`**Parent:** [[${notebook}:accounting/accounts/${slug}.md]]`, '');
     }
+    const children = allAccounts.filter(a => {
+        if (!a.account.startsWith(acct.account + ':')) return false;
+        return !a.account.slice(acct.account.length + 1).includes(':');
+    });
+    if (children.length && notebook) {
+        const links = children.map(c =>
+            `[[${notebook}:accounting/accounts/${_accountSlug(c.account)}.md]]`
+        ).join(' · ');
+        lines.push(`**Sub-accounts:** ${links}`, '');
+    }
     if (acct.cra_t1) {
         const url = 'https://www.canada.ca/en/revenue-agency/services/forms-publications/tax-packages-years/general-income-tax-benefit-package.html';
         lines.push(`**CRA T1 line ${acct.cra_t1}** — ${acct.cra_label || ''}`);
@@ -718,6 +728,7 @@ function _accountContent(acct, allAccounts, notebook) {
 function _accountFrontmatter(acct) {
     const fm = ['---', `title: "${acct.account}"`, 'type: account',
                 `hledger_account: "${acct.account}"`];
+    if (acct.type)      fm.push(`account_type: "${acct.type}"`);
     if (acct.cra_label) fm.push(`cra_label: "${acct.cra_label}"`);
     if (acct.cra_t1)    fm.push(`cra_line_t1: "${acct.cra_t1}"`);
     if (acct.cra_t2125) fm.push(`cra_line_t2125: "${acct.cra_t2125}"`);
