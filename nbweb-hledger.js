@@ -761,7 +761,7 @@ async function _buildPluginContent(el, notebook, config) {
 
 // ── previewRenderer ───────────────────────────────────────────────────────────
 
-function _renderAccountNote(note) {
+async function _renderAccountNote(note) {
     if (note.type !== 'account' || !note.meta) return null;
     const m = note.meta;
     const rows = [
@@ -779,14 +779,10 @@ function _renderAccountNote(note) {
         : ''
     ).join('');
 
-    // Preprocess wikilinks before marked so _enrichRendered can wire click handlers.
-    // Also substitute {title} so hledger codeblocks get the actual account name.
     const acctName = m.hledger_account || note.title || '';
-    let body = (note.body || '').trim().replace(/\{title\}/g, acctName);
-    body = body.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, label) =>
-        `<span class="nb-wiki-link" data-selector="${_esc(target)}"${label ? '' : ' data-autolabel="1"'}>${_esc(label || target)}</span>`);
-    const bodyHtml = body
-        ? `<div class="nb-rendered" style="margin-top:12px">${typeof marked !== 'undefined' ? marked.parse(body) : `<pre>${_esc(body)}</pre>`}</div>`
+    const rawBody = (note.body || '').trim().replace(/\{title\}/g, acctName);
+    const bodyHtml = rawBody
+        ? `<div class="nb-rendered" style="margin-top:12px">${await NbMain.renderMarkdown(rawBody, note.selector)}</div>`
         : '';
 
     return `<div class="nb-hl-account-note">
