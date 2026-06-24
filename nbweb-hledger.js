@@ -271,6 +271,310 @@ function _smallbizAccounts(opts, province) {
     return a;
 }
 
+// ── Personal annex (shared by Service and Sales) ─────────────────────────────
+
+function _personalAnnexAccounts(opts) {
+    const a = [];
+    a.push({ account: 'Assets:Bank:Personal:Chequing', type: 'asset',
+             desc: 'Personal chequing — receives Owner:Draws from business' });
+    if (opts.savings)
+        a.push({ account: 'Assets:Bank:Personal:Savings', type: 'asset' });
+    if (opts.rrsp)
+        a.push({ account: 'Assets:Investments:RRSP', type: 'asset',
+                 desc: 'RRSP — contributions reduce T1 taxable income; withdrawals are income' });
+    if (opts.tfsa)
+        a.push({ account: 'Assets:Investments:TFSA', type: 'asset',
+                 desc: 'TFSA — after-tax contributions; growth and withdrawals tax-free' });
+    if (opts.fhsa)
+        a.push({ account: 'Assets:Investments:FHSA', type: 'asset',
+                 desc: 'FHSA — tax-deductible contributions; tax-free withdrawal for first home' });
+    if (opts.charitable)
+        a.push({ account: 'Expenses:Personal:Charitable', type: 'expense',
+                 cra_t1: '34900', cra_label: 'Donations and gifts' });
+    if (opts.medical)
+        a.push({ account: 'Expenses:Personal:Medical', type: 'expense',
+                 cra_t1: '33099', cra_label: 'Medical expenses' });
+    if (opts.childcare)
+        a.push({ account: 'Expenses:Personal:Childcare', type: 'expense',
+                 cra_t1: '21400', cra_label: 'Child care expenses' });
+    a.push({ account: 'Expenses:Taxes:CPP:SelfEmployed', type: 'expense',
+             cra_t1: '31000', cra_label: 'CPP contributions on self-employment income — both halves' });
+    a.push({ account: 'Expenses:Taxes:IncomeTax:Installments', type: 'expense',
+             desc: 'Quarterly income tax installments — not deductible; tracked for T1 reconciliation' });
+    return a;
+}
+
+// ── Service pack — Independent Contractor ────────────────────────────────────
+
+function _serviceAccounts(opts, province) {
+    const prov = _PROVINCES[province] || _PROVINCES.BC;
+    const a = [];
+
+    // Assets
+    a.push({ account: 'Assets', type: 'asset' });
+    a.push({ account: 'Assets:Bank:Business:Chequing', type: 'asset',
+             desc: 'Primary business chequing — keep separate from personal' });
+    if (opts.savings)
+        a.push({ account: 'Assets:Bank:Business:Savings', type: 'asset' });
+    a.push({ account: 'Assets:AccountsReceivable', type: 'asset',
+             desc: 'Amounts invoiced but not yet paid — invoice date, not payment date' });
+    if (opts.wip)
+        a.push({ account: 'Assets:WIP', type: 'asset',
+                 desc: 'Billable work completed but not yet invoiced — clears when invoice is raised' });
+
+    if (prov.regime === 'hst')
+        a.push({ account: 'Assets:HST:InputTaxCredits', type: 'asset',
+                 desc: `HST paid on business purchases (ITCs) — ${prov.hst}%` });
+    else if (prov.regime === 'gst_pst') {
+        a.push({ account: 'Assets:GST:InputTaxCredits', type: 'asset', desc: 'GST ITCs — 5% federal' });
+        a.push({ account: 'Assets:PST:Paid', type: 'asset',
+                 desc: `PST paid — ${prov.pst}%. NOT recoverable — expense it here` });
+    } else if (prov.regime === 'gst_qst') {
+        a.push({ account: 'Assets:GST:InputTaxCredits', type: 'asset', desc: 'GST ITCs — 5%' });
+        a.push({ account: 'Assets:QST:InputTaxCredits', type: 'asset', desc: 'QST ITCs — 9.975%' });
+    } else {
+        a.push({ account: 'Assets:GST:InputTaxCredits', type: 'asset', desc: 'GST ITCs — 5% federal' });
+    }
+
+    // Liabilities
+    a.push({ account: 'Liabilities', type: 'liability' });
+    a.push({ account: 'Liabilities:AccountsPayable', type: 'liability' });
+    if (opts.credit_card)
+        a.push({ account: 'Liabilities:CreditCard:Business', type: 'liability' });
+    if (opts.retainer)
+        a.push({ account: 'Liabilities:DeferredRevenue:Retainer', type: 'liability',
+                 desc: 'Retainer received but not yet earned — a debt, not income, until work is delivered' });
+
+    if (prov.regime === 'hst') {
+        a.push({ account: 'Liabilities:HST:Collected', type: 'liability',
+                 desc: `HST collected from clients — ${prov.hst}%. Remit to CRA` });
+        a.push({ account: 'Liabilities:HST:Owing', type: 'liability' });
+    } else if (prov.regime === 'gst_pst') {
+        a.push({ account: 'Liabilities:GST:Collected', type: 'liability', desc: 'GST collected — 5%' });
+        a.push({ account: 'Liabilities:GST:Owing', type: 'liability' });
+    } else if (prov.regime === 'gst_qst') {
+        a.push({ account: 'Liabilities:GST:Collected', type: 'liability', desc: 'GST collected — 5%' });
+        a.push({ account: 'Liabilities:GST:Owing', type: 'liability' });
+        a.push({ account: 'Liabilities:QST:Collected', type: 'liability', desc: 'QST collected — 9.975%' });
+        a.push({ account: 'Liabilities:QST:Owing', type: 'liability' });
+    } else {
+        a.push({ account: 'Liabilities:GST:Collected', type: 'liability', desc: 'GST collected — 5%' });
+        a.push({ account: 'Liabilities:GST:Owing', type: 'liability' });
+    }
+
+    // Equity
+    a.push({ account: 'Equity', type: 'equity' });
+    a.push({ account: 'Equity:Owner:Equity',     type: 'equity' });
+    a.push({ account: 'Equity:Owner:Draws',      type: 'equity',
+             desc: 'Transfers to personal chequing — not an expense, reduces equity' });
+    a.push({ account: 'Equity:RetainedEarnings', type: 'equity' });
+    a.push({ account: 'Equity:OpeningBalances',  type: 'equity' });
+
+    // Income
+    a.push({ account: 'Income', type: 'income' });
+    a.push({ account: 'Income:Services:Hourly',    type: 'income', cra_t2125: '8000', cra_label: 'Gross professional fees' });
+    a.push({ account: 'Income:Services:FixedFee',  type: 'income', cra_t2125: '8000' });
+    if (opts.retainer)
+        a.push({ account: 'Income:Services:Retainer', type: 'income', cra_t2125: '8000',
+                 desc: 'Earned portion of retainer — released from Liabilities:DeferredRevenue:Retainer' });
+    a.push({ account: 'Income:Services:Consulting', type: 'income', cra_t2125: '8000' });
+    a.push({ account: 'Income:Reimbursements', type: 'income',
+             desc: 'Expense pass-through billed to clients — not revenue; must net zero at close' });
+    a.push({ account: 'Income:Interest', type: 'income' });
+
+    // Expenses
+    a.push({ account: 'Expenses', type: 'expense' });
+    if (opts.contractors)
+        a.push({ account: 'Expenses:Professional:Contractors', type: 'expense',
+                 cra_t2125: '8860', cra_label: 'Legal, accounting, other professional fees',
+                 desc: 'T4A required for any contractor paid $500+ in the calendar year' });
+    a.push({ account: 'Expenses:Professional:Legal',       type: 'expense', cra_t2125: '8860' });
+    a.push({ account: 'Expenses:Professional:Accounting',  type: 'expense', cra_t2125: '8860' });
+    a.push({ account: 'Expenses:Professional:Insurance:EO', type: 'expense', cra_t2125: '8690',
+             cra_label: 'Insurance',
+             desc: 'Errors & omissions / professional liability — often required by clients' });
+    a.push({ account: 'Expenses:Professional:Dues', type: 'expense', cra_t2125: '8760',
+             cra_label: 'Dues and subscriptions',
+             desc: 'Professional association memberships, trade licences' });
+    a.push({ account: 'Expenses:Office:Supplies',        type: 'expense', cra_t2125: '8810', cra_label: 'Office expenses' });
+    a.push({ account: 'Expenses:Software:Subscriptions', type: 'expense', cra_t2125: '8810' });
+    a.push({ account: 'Expenses:Software:Licences',      type: 'expense', cra_t2125: '8810' });
+    a.push({ account: 'Expenses:Marketing:Advertising',  type: 'expense', cra_t2125: '8520', cra_label: 'Advertising' });
+    a.push({ account: 'Expenses:Marketing:WebHosting',   type: 'expense', cra_t2125: '8810' });
+    a.push({ account: 'Expenses:Meals:Entertainment', type: 'expense', cra_t2125: '8523',
+             desc: 'Track gross amount — CRA allows 50% deduction. Do NOT net it here.' });
+    a.push({ account: 'Expenses:Travel:Accommodation',   type: 'expense', cra_t2125: '9270', cra_label: 'Travel expenses' });
+    a.push({ account: 'Expenses:Travel:Airfare',         type: 'expense', cra_t2125: '9270' });
+    a.push({ account: 'Expenses:Travel:Meals',           type: 'expense', cra_t2125: '9270',
+             desc: 'Meals while travelling — 50% deductible, same rule as Entertainment' });
+    a.push({ account: 'Expenses:Travel:LocalTransport',  type: 'expense', cra_t2125: '9270' });
+    a.push({ account: 'Expenses:Training:Courses', type: 'expense', cra_t2125: '8760',
+             desc: 'Professional development — fully deductible when related to current business' });
+    a.push({ account: 'Expenses:Training:Books',   type: 'expense', cra_t2125: '8760' });
+    if (opts.home_office) {
+        a.push({ account: 'Expenses:HomeOffice:Utilities', type: 'expense', cra_t2125: '9220', cra_label: 'Business-use-of-home expenses' });
+        a.push({ account: 'Expenses:HomeOffice:Internet',  type: 'expense', cra_t2125: '9220' });
+        a.push({ account: 'Expenses:HomeOffice:Rent',      type: 'expense', cra_t2125: '9220',
+                 desc: 'Business-use % of rent — calculate at year-end and post adjusting entry' });
+    }
+    if (opts.auto) {
+        a.push({ account: 'Expenses:Auto:Fuel',        type: 'expense', cra_t2125: '9281', cra_label: 'Motor vehicle expenses' });
+        a.push({ account: 'Expenses:Auto:Insurance',   type: 'expense', cra_t2125: '9281' });
+        a.push({ account: 'Expenses:Auto:Maintenance', type: 'expense', cra_t2125: '9281',
+                 desc: 'Track business-use % separately; apply to all auto accounts at year-end' });
+    }
+    if (opts.cca) {
+        a.push({ account: 'Expenses:CCA:Class8',  type: 'expense', cra_t2125: '9936', cra_label: 'CCA',
+                 desc: 'Class 8 — office furniture & equipment (20% declining balance)' });
+        a.push({ account: 'Expenses:CCA:Class50', type: 'expense', cra_t2125: '9936',
+                 desc: 'Class 50 — computer hardware post-2018 (55% declining balance)' });
+    }
+    a.push({ account: 'Expenses:Banking:Fees',  type: 'expense', cra_t2125: '8710', cra_label: 'Interest and bank charges' });
+    a.push({ account: 'Expenses:Uncategorised', type: 'expense',
+             desc: 'Temporary — review and re-categorise monthly; must net zero at close' });
+
+    // Personal annex
+    if (opts.personal_annex)
+        a.push(..._personalAnnexAccounts(opts));
+
+    return a;
+}
+
+// ── Sales pack — Resale Shop ──────────────────────────────────────────────────
+
+function _salesAccounts(opts, province) {
+    const prov = _PROVINCES[province] || _PROVINCES.BC;
+    const a = [];
+
+    // Assets
+    a.push({ account: 'Assets', type: 'asset' });
+    a.push({ account: 'Assets:Bank:Business:Chequing', type: 'asset',
+             desc: 'Primary business chequing — keep separate from personal' });
+    if (opts.savings)
+        a.push({ account: 'Assets:Bank:Business:Savings', type: 'asset' });
+    a.push({ account: 'Assets:Inventory', type: 'asset',
+             desc: 'Sum of cost bases of all unsold items — reduced by COGS on each sale' });
+    if (opts.online_sales)
+        a.push({ account: 'Assets:Payment:Stripe', type: 'asset',
+                 desc: 'Clearing account — balance should reach zero on each payout (~2 days)' });
+    if (opts.paypal)
+        a.push({ account: 'Assets:Payment:PayPal', type: 'asset',
+                 desc: 'Clearing account — transfer to chequing on each payout' });
+    if (opts.etransfer)
+        a.push({ account: 'Assets:Payment:ETransfer', type: 'asset' });
+
+    if (prov.regime === 'hst')
+        a.push({ account: 'Assets:HST:InputTaxCredits', type: 'asset',
+                 desc: `HST paid on business purchases (ITCs) — ${prov.hst}%` });
+    else if (prov.regime === 'gst_pst') {
+        a.push({ account: 'Assets:GST:InputTaxCredits', type: 'asset', desc: 'GST ITCs — 5% federal' });
+        a.push({ account: 'Assets:PST:Paid', type: 'asset',
+                 desc: `PST paid on inventory purchases — ${prov.pst}%. NOT recoverable` });
+    } else if (prov.regime === 'gst_qst') {
+        a.push({ account: 'Assets:GST:InputTaxCredits', type: 'asset', desc: 'GST ITCs — 5%' });
+        a.push({ account: 'Assets:QST:InputTaxCredits', type: 'asset', desc: 'QST ITCs — 9.975%' });
+    } else {
+        a.push({ account: 'Assets:GST:InputTaxCredits', type: 'asset', desc: 'GST ITCs — 5% federal' });
+    }
+
+    // Liabilities
+    a.push({ account: 'Liabilities', type: 'liability' });
+    if (opts.consignment)
+        a.push({ account: 'Liabilities:AccountsPayable', type: 'liability',
+                 desc: 'Consignment payouts owing to item owners' });
+    if (opts.credit_card)
+        a.push({ account: 'Liabilities:CreditCard:Business', type: 'liability' });
+    if (opts.gift_cards)
+        a.push({ account: 'Liabilities:GiftCards', type: 'liability',
+                 desc: 'Gift cards sold but not yet redeemed — a debt, not income' });
+
+    if (prov.regime === 'hst') {
+        a.push({ account: 'Liabilities:HST:Collected', type: 'liability',
+                 desc: `HST collected on sales — ${prov.hst}%. Remit to CRA` });
+        a.push({ account: 'Liabilities:HST:Owing', type: 'liability' });
+    } else if (prov.regime === 'gst_pst') {
+        a.push({ account: 'Liabilities:GST:Collected', type: 'liability', desc: 'GST collected — 5%' });
+        a.push({ account: 'Liabilities:GST:Owing', type: 'liability' });
+    } else if (prov.regime === 'gst_qst') {
+        a.push({ account: 'Liabilities:GST:Collected', type: 'liability', desc: 'GST collected — 5%' });
+        a.push({ account: 'Liabilities:GST:Owing', type: 'liability' });
+        a.push({ account: 'Liabilities:QST:Collected', type: 'liability', desc: 'QST collected — 9.975%' });
+        a.push({ account: 'Liabilities:QST:Owing', type: 'liability' });
+    } else {
+        a.push({ account: 'Liabilities:GST:Collected', type: 'liability', desc: 'GST collected — 5%' });
+        a.push({ account: 'Liabilities:GST:Owing', type: 'liability' });
+    }
+
+    // Equity
+    a.push({ account: 'Equity', type: 'equity' });
+    a.push({ account: 'Equity:Owner:Equity',     type: 'equity' });
+    a.push({ account: 'Equity:Owner:Draws',      type: 'equity',
+             desc: 'Transfers to personal chequing — not an expense, reduces equity' });
+    a.push({ account: 'Equity:RetainedEarnings', type: 'equity' });
+    a.push({ account: 'Equity:OpeningBalances',  type: 'equity' });
+
+    // Income
+    a.push({ account: 'Income', type: 'income' });
+    if (opts.online_sales)
+        a.push({ account: 'Income:Sales:Online', type: 'income', cra_t2125: '8000', cra_label: 'Gross sales' });
+    if (opts.in_person)
+        a.push({ account: 'Income:Sales:InPerson', type: 'income', cra_t2125: '8000' });
+    if (opts.wholesale)
+        a.push({ account: 'Income:Sales:Wholesale', type: 'income', cra_t2125: '8000' });
+    if (!opts.online_sales && !opts.in_person && !opts.wholesale)
+        a.push({ account: 'Income:Sales', type: 'income', cra_t2125: '8000', cra_label: 'Gross sales' });
+    if (opts.online_sales)
+        a.push({ account: 'Income:Shipping:Recovered', type: 'income',
+                 desc: 'Shipping charged to buyer — compare against Expenses:Shipping:Outbound' });
+    a.push({ account: 'Income:Reimbursements', type: 'income',
+             desc: 'Expense pass-through — must net zero at close' });
+
+    // COGS — its own top-level group for clarity
+    a.push({ account: 'Expenses:COGS', type: 'expense', cra_t2125: '8320', cra_label: 'Cost of goods sold',
+             desc: 'Cost basis of items sold — posted simultaneously with each sale; offsets Assets:Inventory' });
+
+    // Operating expenses
+    a.push({ account: 'Expenses', type: 'expense' });
+    if (opts.online_sales) {
+        a.push({ account: 'Expenses:Shipping:Outbound',  type: 'expense', cra_t2125: '8810' });
+        a.push({ account: 'Expenses:Shipping:Packaging', type: 'expense', cra_t2125: '8810',
+                 desc: 'Boxes, tissue, tape, labels' });
+        a.push({ account: 'Expenses:Platform:Online', type: 'expense', cra_t2125: '8520',
+                 desc: 'Etsy listing + transaction fees, Stripe processing fees' });
+    }
+    if (opts.paypal)
+        a.push({ account: 'Expenses:Platform:PayPal', type: 'expense', cra_t2125: '8520' });
+    a.push({ account: 'Expenses:Photography',       type: 'expense', cra_t2125: '8810',
+             desc: 'Listing photos — CCA Class 50 if a camera was purchased' });
+    a.push({ account: 'Expenses:Sourcing:Travel',   type: 'expense', cra_t2125: '9270' });
+    a.push({ account: 'Expenses:Sourcing:MarketFees', type: 'expense', cra_t2125: '8810',
+             desc: 'Estate sale / market entry and table fees' });
+    a.push({ account: 'Expenses:Sourcing:Supplies', type: 'expense', cra_t2125: '8810',
+             desc: 'Tags, hangers, display materials' });
+    a.push({ account: 'Expenses:Marketing:Advertising',  type: 'expense', cra_t2125: '8520', cra_label: 'Advertising' });
+    a.push({ account: 'Expenses:Marketing:WebHosting',   type: 'expense', cra_t2125: '8810' });
+    if (opts.storage)
+        a.push({ account: 'Expenses:Storage', type: 'expense', cra_t2125: '8810' });
+    a.push({ account: 'Expenses:Professional:Accounting', type: 'expense', cra_t2125: '8860', cra_label: 'Legal, accounting, other fees' });
+    a.push({ account: 'Expenses:Banking:Fees', type: 'expense', cra_t2125: '8710', cra_label: 'Interest and bank charges' });
+    if (opts.cca) {
+        a.push({ account: 'Expenses:CCA:Class8',  type: 'expense', cra_t2125: '9936', cra_label: 'CCA',
+                 desc: 'Class 8 — display fixtures, shelving (20% declining balance)' });
+        a.push({ account: 'Expenses:CCA:Class50', type: 'expense', cra_t2125: '9936',
+                 desc: 'Class 50 — computer, camera post-2018 (55% declining balance)' });
+    }
+    a.push({ account: 'Expenses:Inventory:WriteDown', type: 'expense',
+             desc: 'Items donated, discarded, or damaged — reduces Assets:Inventory' });
+    a.push({ account: 'Expenses:Uncategorised', type: 'expense',
+             desc: 'Temporary — must net zero at close' });
+
+    // Personal annex
+    if (opts.personal_annex)
+        a.push(..._personalAnnexAccounts(opts));
+
+    return a;
+}
+
 const _COA_DOMAINS = {
     personal: {
         label: 'Personal Finance',
@@ -303,6 +607,50 @@ const _COA_DOMAINS = {
             { id: 'cca',            label: 'Capital cost allowance',    default: false },
         ],
         build: _smallbizAccounts,
+    },
+    service: {
+        label: 'Service — Independent Contractor',
+        options: [
+            { id: 'savings',        label: 'Business savings account',  default: false },
+            { id: 'credit_card',    label: 'Business credit card',      default: true  },
+            { id: 'retainer',       label: 'Retainer income',           default: false },
+            { id: 'contractors',    label: 'Subcontractors (T4A)',       default: false },
+            { id: 'wip',            label: 'Track WIP',                 default: false },
+            { id: 'home_office',    label: 'Home office deduction',     default: false },
+            { id: 'auto',           label: 'Business vehicle',          default: false },
+            { id: 'cca',            label: 'Capital cost allowance',    default: false },
+            { id: 'personal_annex', label: 'Personal annex (T1)',       default: true  },
+            { id: 'rrsp',           label: '↳ RRSP',                    default: false },
+            { id: 'tfsa',           label: '↳ TFSA',                    default: false },
+            { id: 'fhsa',           label: '↳ FHSA',                    default: false },
+            { id: 'charitable',     label: '↳ Charitable donations',    default: false },
+            { id: 'medical',        label: '↳ Medical expenses',        default: false },
+            { id: 'childcare',      label: '↳ Childcare',               default: false },
+        ],
+        build: _serviceAccounts,
+    },
+    sales: {
+        label: 'Sales — Resale Shop',
+        options: [
+            { id: 'savings',        label: 'Business savings account',  default: false },
+            { id: 'credit_card',    label: 'Business credit card',      default: false },
+            { id: 'online_sales',   label: 'Online sales (Stripe/Etsy)',default: true  },
+            { id: 'in_person',      label: 'In-person sales (markets)', default: false },
+            { id: 'wholesale',      label: 'Wholesale channel',         default: false },
+            { id: 'paypal',         label: 'PayPal',                    default: false },
+            { id: 'etransfer',      label: 'e-Transfer',                default: false },
+            { id: 'consignment',    label: 'Consignment / payouts',     default: false },
+            { id: 'gift_cards',     label: 'Gift cards',                default: false },
+            { id: 'storage',        label: 'Storage costs',             default: false },
+            { id: 'cca',            label: 'Equipment / CCA',           default: false },
+            { id: 'personal_annex', label: 'Personal annex (T1)',       default: true  },
+            { id: 'rrsp',           label: '↳ RRSP',                    default: false },
+            { id: 'tfsa',           label: '↳ TFSA',                    default: false },
+            { id: 'fhsa',           label: '↳ FHSA',                    default: false },
+            { id: 'charitable',     label: '↳ Charitable donations',    default: false },
+            { id: 'medical',        label: '↳ Medical expenses',        default: false },
+        ],
+        build: _salesAccounts,
     },
 };
 
