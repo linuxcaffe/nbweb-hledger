@@ -714,11 +714,13 @@ function _accountContent(acct, allAccounts, notebook) {
     }
     if (acct.cra_t1) {
         const url = 'https://www.canada.ca/en/revenue-agency/services/forms-publications/tax-packages-years/general-income-tax-benefit-package.html';
-        lines.push(`**CRA T1 line ${acct.cra_t1}** — ${acct.cra_label || ''}`);
+        const label = acct.cra_label ? ` — ${acct.cra_label}` : '';
+        lines.push(`**CRA T1 line ${acct.cra_t1}**${label}`);
         lines.push(`<a href="term:xdg-open ${url}">T1 General Guide</a>`, '');
     } else if (acct.cra_t2125) {
         const url = 'https://www.canada.ca/en/revenue-agency/services/forms-publications/forms/t2125.html';
-        lines.push(`**CRA T2125 line ${acct.cra_t2125}** — ${acct.cra_label || ''}`);
+        const label = acct.cra_label ? ` — ${acct.cra_label}` : '';
+        lines.push(`**CRA T2125 line ${acct.cra_t2125}**${label}`);
         lines.push(`<a href="term:xdg-open ${url}">T2125 form</a>`, '');
     }
     return lines.join('\n').trimEnd();
