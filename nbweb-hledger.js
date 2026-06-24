@@ -1163,7 +1163,8 @@ NbWeb.registerModule('hledger', {
     pluginContent: async (el) => {
         const hledgerNbs = NbWeb.notebooks().filter(nb => nb.hledger != null);
         if (!hledgerNbs.length) return;
-        const nb = hledgerNbs[0];
+        const currentName = typeof NbNav !== 'undefined' ? NbNav.notebook : '';
+        const nb = hledgerNbs.find(n => n.name === currentName) || hledgerNbs[0];
         await _buildPluginContent(el, nb.name, nb.hledger);
     },
 
