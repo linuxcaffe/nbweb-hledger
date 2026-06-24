@@ -29,7 +29,10 @@ Unlike every other nb-web plugin, NbWeb-hledger is not primarily a data viewer â
 ## Installation
 
 1. Install [nb-web](https://github.com/linuxcaffe/nb-web)
-2. Copy `nbweb-hledger.js` to `nb-web/plugins/`
+2. Symlink `nbweb-hledger.js` into `nb-web/plugins/` (symlink, not copy â€” keeps the plugin current as you update it):
+   ```bash
+   ln -sf ~/dev/nbweb-hledger/nbweb-hledger.js ~/dev/nb-web/plugins/nbweb-hledger.js
+   ```
 3. Add to `nb-settings.json` plugins list:
    ```json
    { "url": "/plugins/nbweb-hledger.js", "enabled": true }
