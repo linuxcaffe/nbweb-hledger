@@ -840,7 +840,7 @@ function _buildCoaWizard(el, notebook, config) {
 
     el.innerHTML = `
         <div class="nb-plugin-section nb-hl-coa-wizard">
-            <div class="nb-plugin-section-title">Chart of Accounts Setup</div>
+            <div class="nb-plugin-section-title">Chart of Accounts Setup — <code>${_esc(notebook)}</code></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
                 <label style="font-size:12px;color:var(--text-dim)">Domain</label>
                 <select id="nb-hl-domain" class="nb-scope-select">
