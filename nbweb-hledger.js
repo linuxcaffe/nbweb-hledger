@@ -700,7 +700,7 @@ function _accountContent(acct, allAccounts, notebook) {
     if (acct.desc) lines.push(acct.desc, '');
     if (parentPath && notebook) {
         const slug = _accountSlug(parentPath);
-        lines.push(`**Parent:** [[${notebook}:${slug}.md]]`, '');
+        lines.push(`**Parent:** [[${notebook}:accounting/accounts/${slug}.md]]`, '');
     }
     if (acct.cra_t1) {
         const url = 'https://www.canada.ca/en/revenue-agency/services/forms-publications/tax-packages-years/general-income-tax-benefit-package.html';
@@ -749,25 +749,22 @@ async function _createAccountNotes(notebook, accounts, journalPath, progressCb) 
     let errors  = 0;
     accounts = _expandAccountTree(accounts);
 
-    // Seed note template only if it doesn't exist yet — don't overwrite user edits
-    const jFlag = journalPath ? ` -f ${journalPath}` : '';
-    const existingTpl = await fetch(`/api/templates?notebook=${encodeURIComponent(notebook)}`).then(r => r.json()).catch(() => ({}));
-    const tplExists = (existingTpl.templates || []).some(t => t.name === 'account' && t.scope === 'local');
-    if (!tplExists) {
-        const noteTemplate = [
-            '---',
-            'title: "{{title}}"',
-            'type: account',
-            'hledger_account: "{{title}}"',
-            '---',
-            '## {{title}}',
-            '',
-            '{{content}}',
-            '',
-            `<a href="term:hledger${jFlag} bal '{{title}}'">balance</a>` +
-                ` · <a href="term:hledger${jFlag} reg '{{title}}'">register</a>`,
-        ].join('\n');
-        try {
+    // Always (re)write the account template so the current hl fence and folder path are in effect.
+    const noteTemplate = [
+        '---',
+        'title: "{{title}}"',
+        'type: account',
+        'hledger_account: "{{title}}"',
+        '---',
+        '## {{title}}',
+        '',
+        '{{content}}',
+        '',
+        '```hl',
+        'reg {{title}}',
+        '```',
+    ].join('\n');
+    try {
         await fetch('/api/templates', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -778,8 +775,7 @@ async function _createAccountNotes(notebook, accounts, journalPath, progressCb) 
                 content:  noteTemplate,
             }),
         });
-        } catch (_) {}
-    } // end if (!tplExists)
+    } catch (_) {}
     try {
         await fetch('/api/templates', {
             method: 'POST',
@@ -823,7 +819,7 @@ async function _createAccountNotes(notebook, accounts, journalPath, progressCb) 
             const r = await fetch('/api/notes', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ notebook, title: acct.account, template_content: noteText }),
+                body: JSON.stringify({ notebook, folder: 'accounting/accounts', title: acct.account, template_content: noteText }),
             });
             if (r.ok) { created++; } else { errors++; }
         } catch (_) { errors++; }
