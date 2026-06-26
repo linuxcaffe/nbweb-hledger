@@ -1127,18 +1127,83 @@ const _SPECIALTY_CFG = {
     invoice:   { icon: '🧾', label: 'Invoice' },
 };
 
-function _renderSpecialtyNote(note) {
+function _csvToReadonlyTable(csvText) {
+    const lines = csvText.trim().split('\n').filter(l => l.trim() && l.trim() !== 'contents');
+    if (lines.length < 2) return '';
+    const headers = lines[0].split(',').map(h => h.trim()).filter(Boolean);
+    const thHtml  = headers.map(h => `<th>${_esc(h)}</th>`).join('');
+    const trHtml  = lines.slice(1).map(r => {
+        const cells = r.split(',').map(c => c.trim());
+        return `<tr>${cells.map(c => `<td>${_esc(c)}</td>`).join('')}</tr>`;
+    }).join('');
+    return `<table class="nb-catalog-table"><thead><tr>${thHtml}</tr></thead><tbody>${trHtml}</tbody></table>`;
+}
+
+function _renderCatalogBody(body) {
+    let html = '';
+    const lines = body.split('\n');
+    let i = 0;
+    while (i < lines.length) {
+        const line = lines[i];
+        if (/^#+\s/.test(line)) {
+            const level = Math.min(line.match(/^#+/)[0].length + 1, 6);
+            html += `<h${level} class="nb-catalog-heading">${_esc(line.replace(/^#+\s*/, ''))}</h${level}>`;
+            i++;
+        } else if (line.startsWith('```csv')) {
+            i++;
+            const csvLines = [];
+            while (i < lines.length && !lines[i].startsWith('```')) { csvLines.push(lines[i]); i++; }
+            i++;
+            html += _csvToReadonlyTable(csvLines.join('\n'));
+        } else {
+            i++;
+        }
+    }
+    return html;
+}
+
+async function _fetchCatalogPanel(note, token) {
+    try {
+        const nb     = note.notebook || '';
+        const sel    = note.selector || '';
+        const rel    = sel.includes(':') ? sel.split(':').slice(1).join(':') : '';
+        const folder = rel.includes('/') ? rel.split('/').slice(0, -1).join('/') : '';
+        const r = await fetch(`/api/csv/source?notebook=${encodeURIComponent(nb)}&folder=${encodeURIComponent(folder)}&token=${encodeURIComponent(token)}`);
+        if (!r.ok) return null;
+        const d = await r.json();
+        if (!d.found) return null;
+        const nr = await fetch(`/api/note?selector=${encodeURIComponent(d.selector)}`);
+        if (!nr.ok) return null;
+        const nd = await nr.json();
+        const cfg  = _SPECIALTY_CFG[token] || {};
+        const icon = cfg.icon || '📋';
+        const bodyHtml = _renderCatalogBody(nd.body || '');
+        return `<details class="nb-catalog-ref">
+            <summary class="nb-barblock nb-catalog-ref-header">
+                <span class="nb-specialty-icon">${icon}</span>
+                <span class="nb-csv-name">${_esc(nd.title || token)}</span>
+                <span class="nb-csv-count nb-catalog-ref-hint">catalog</span>
+            </summary>
+            <div class="nb-catalog-ref-body">${bodyHtml}</div>
+        </details>`;
+    } catch(e) { return null; }
+}
+
+async function _renderSpecialtyNote(note) {
     const { icon, label } = _SPECIALTY_CFG[note.type] || { icon: '📋', label: note.type };
     const pills = [];
     if (note.meta?.status)       pills.push(note.meta.status);
     if (note.meta?.billing_type) pills.push(note.meta.billing_type);
     if (note.meta?.client)       pills.push(String(note.meta.client).replace(/^contacts:/, '').replace(/\.md$/, ''));
     const pillsHtml = pills.map(p => `<span class="nb-specialty-pill">${_esc(p)}</span>`).join('');
+    const csvTokens = [note.meta?.csv].flat().filter(Boolean);
+    const panels    = await Promise.all(csvTokens.map(t => _fetchCatalogPanel(note, t)));
+    const catalogHtml = panels.filter(Boolean).join('');
     return `<div class="nb-specialty-header">
         <span class="nb-specialty-icon">${icon}</span>
         <span class="nb-specialty-label">${_esc(label)}</span>
         ${pillsHtml}
-    </div>` + NbMain.renderMarkdown(note.body || '', note.selector);
+    </div>${catalogHtml}` + NbMain.renderMarkdown(note.body || '', note.selector);
 }
 
 // ── previewRenderer ───────────────────────────────────────────────────────────
