@@ -1116,6 +1116,31 @@ async function _buildPluginContent(el, notebook, config) {
     }
 }
 
+// ── Service business specialty types ─────────────────────────────────────────
+
+const _SPECIALTY_CFG = {
+    tools:     { icon: '🔧', label: 'Tool Inventory' },
+    materials: { icon: '📦', label: 'Materials Catalog' },
+    transport: { icon: '🚗', label: 'Transport' },
+    quote:     { icon: '📋', label: 'Quote' },
+    project:   { icon: '🏗️', label: 'Project' },
+    invoice:   { icon: '🧾', label: 'Invoice' },
+};
+
+function _renderSpecialtyNote(note) {
+    const { icon, label } = _SPECIALTY_CFG[note.type] || { icon: '📋', label: note.type };
+    const pills = [];
+    if (note.meta?.status)       pills.push(note.meta.status);
+    if (note.meta?.billing_type) pills.push(note.meta.billing_type);
+    if (note.meta?.client)       pills.push(String(note.meta.client).replace(/^contacts:/, '').replace(/\.md$/, ''));
+    const pillsHtml = pills.map(p => `<span class="nb-specialty-pill">${_esc(p)}</span>`).join('');
+    return `<div class="nb-specialty-header">
+        <span class="nb-specialty-icon">${icon}</span>
+        <span class="nb-specialty-label">${_esc(label)}</span>
+        ${pillsHtml}
+    </div>` + NbMain.renderMarkdown(note.body || '', note.selector);
+}
+
 // ── previewRenderer ───────────────────────────────────────────────────────────
 
 async function _renderAccountNote(note) {
@@ -1203,6 +1228,7 @@ NbWeb.registerModule('hledger', {
         if (note.type === 'template') return '📋';
         if (note.type === 'period')   return '📅';
         if (note.type === 'report')   return '📊';
+        if (_SPECIALTY_CFG[note.type]) return _SPECIALTY_CFG[note.type].icon;
         return null;
     },
 
@@ -1215,6 +1241,7 @@ NbWeb.registerModule('hledger', {
 
     previewRenderer: note => {
         if (note.type === 'account') return _renderAccountNote(note);
+        if (_SPECIALTY_CFG[note.type]) return _renderSpecialtyNote(note);
         return null;
     },
 });
