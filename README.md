@@ -155,12 +155,14 @@ Specialty header shows live budget totals and **Quote** / **Invoice** action but
 Templates live in `djp:.templates/invoice-cash.md` (or `invoice-tm.md`). The plugin looks in the notebook's `.templates/` first, then `~/.nb/.templates/`.
 
 Template variables: `{{invoice_num}}`, `{{issued}}`, `{{due}}`, `{{to_block}}`, `{{re_line}}`,
-`{{labour_lines}}`, `{{total_line}}`, `{{notes_section}}`, `{{ledger_block}}`,
+`{{labour_lines}}`, `{{total_line}}`, `{{subtotal}}`, `{{hst}}`, `{{ar_total}}`,
+`{{notes_section}}`, `{{ledger_block}}`,
 `{{client}}`, `{{client_raw}}`, `{{project}}`, `{{rate}}`, `{{reports_selector}}`
 
 - **`{{to_block}}`** — resolved from `contacts/` notebook via `client:` FM key, then project prefix fallback; formats name, org, address
 - **`{{re_line}}`** — `project: nathan (flooring, paint, electrical)` — project stem + unique timedot sub-categories
 - **`{{labour_lines}}`** — one Markdown table row per diary session (date, description, hours, rate, amount)
+- **`{{subtotal}}`** / **`{{hst}}`** / **`{{ar_total}}`** — numeric amounts for t&m table rows (subtotal before HST, HST amount, total due)
 - **`{{ledger_block}}`** — canonical hledger entries for your books (AR + income at invoice time; commented payment template)
 
 #### Progressive billing
