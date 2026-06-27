@@ -1475,26 +1475,28 @@ async function _invoiceMarkPaid(note) {
 function _invoicePrint(note) {
     const content = document.getElementById('nb-preview-content');
     if (!content) return;
+    const clone = content.cloneNode(true);
+    // Strip non-printable chrome
+    clone.querySelectorAll(
+        '.nb-specialty-header, .nb-barblock-hdr, .nb-fm-strip, .nb-iq-refresh, button'
+    ).forEach(el => el.remove());
     const win = window.open('', '_blank', 'width=820,height=700');
     if (!win) return;
-    const styles = [...document.styleSheets].map(ss => {
-        try { return [...ss.cssRules].map(r => r.cssText).join('\n'); }
-        catch (_) { return ''; }
-    }).join('\n');
     win.document.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8">
-<title>${document.title}</title>
+<title>${note?.title || document.title}</title>
+<link rel="stylesheet" href="/styles.css">
 <style>
-${styles}
-body { background:#fff; color:#000; margin:0; padding:0; }
+html, body { background:#fff !important; color:#000 !important; font-size:14px !important; margin:0; padding:0; }
+body > * { max-width:720px; margin:32px auto; padding:0 24px; }
 .nb-specialty-header, .nb-barblock, .nb-fm-strip { display:none !important; }
-#nb-preview-content { max-width:720px; margin:32px auto; padding:0 24px; font-size:13px; }
-table { border-collapse:collapse; width:100%; }
-th,td { border:1px solid #bbb; padding:5px 10px; }
+table { border-collapse:collapse; width:100%; margin:8px 0; }
+th, td { border:1px solid #bbb; padding:5px 10px; text-align:left; }
 th { background:#f0f0f0; }
-@media print { @page { margin:0.75in; } body { margin:0; } }
+pre, code { font-size:12px; }
+@media print { @page { margin:0.75in; } }
 </style>
-</head><body><div id="nb-preview-content">${content.innerHTML}</div></body></html>`);
+</head><body>${clone.outerHTML}</body></html>`);
     win.document.close();
     win.addEventListener('load', () => { win.focus(); win.print(); }, { once: true });
 }
