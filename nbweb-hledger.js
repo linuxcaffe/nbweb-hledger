@@ -1476,7 +1476,10 @@ async function _invoicePrint(note) {
     if (!note?.selector) return;
     // Render from raw note content — avoids any live-DOM artifacts (dialogs, overlays)
     const raw = note.raw || '';
-    const body = raw.replace(/^---[\s\S]*?---\s*\n/, '').trim();
+    const body = raw
+        .replace(/^---[\s\S]*?---\s*\n/, '')   // strip frontmatter
+        .replace(/```ledger[\s\S]*?```/g, '')   // strip ledger accounting block
+        .trim();
     const rendered = await NbMain.renderMarkdown(body, note.selector);
     const win = window.open('', '_blank', 'width=820,height=700');
     if (!win) return;
