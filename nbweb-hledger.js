@@ -1472,31 +1472,28 @@ async function _invoiceMarkPaid(note) {
     NbMain.openNote(note.selector);
 }
 
-function _invoicePrint(note) {
-    const content = document.getElementById('nb-preview-content');
-    if (!content) return;
-    const clone = content.cloneNode(true);
-    // Strip non-printable chrome
-    clone.querySelectorAll(
-        '.nb-specialty-header, .nb-barblock-hdr, .nb-fm-strip, .nb-iq-refresh, button'
-    ).forEach(el => el.remove());
+async function _invoicePrint(note) {
+    if (!note?.selector) return;
+    // Render from raw note content — avoids any live-DOM artifacts (dialogs, overlays)
+    const raw = note.raw || '';
+    const body = raw.replace(/^---[\s\S]*?---\s*\n/, '').trim();
+    const rendered = await NbMain.renderMarkdown(body, note.selector);
     const win = window.open('', '_blank', 'width=820,height=700');
     if (!win) return;
     win.document.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8">
-<title>${note?.title || document.title}</title>
+<title>${note.title || 'Invoice'}</title>
 <link rel="stylesheet" href="/styles.css">
 <style>
 html, body { background:#fff !important; color:#000 !important; font-size:14px !important; margin:0; padding:0; }
-body > * { max-width:720px; margin:32px auto; padding:0 24px; }
-.nb-specialty-header, .nb-barblock, .nb-fm-strip { display:none !important; }
+body { max-width:720px; margin:32px auto; padding:0 24px; }
 table { border-collapse:collapse; width:100%; margin:8px 0; }
 th, td { border:1px solid #bbb; padding:5px 10px; text-align:left; }
 th { background:#f0f0f0; }
-pre, code { font-size:12px; }
+pre, code { font-size:12px; white-space:pre-wrap; }
 @media print { @page { margin:0.75in; } }
 </style>
-</head><body>${clone.outerHTML}</body></html>`);
+</head><body>${rendered}</body></html>`);
     win.document.close();
     win.addEventListener('load', () => { win.focus(); win.print(); }, { once: true });
 }
