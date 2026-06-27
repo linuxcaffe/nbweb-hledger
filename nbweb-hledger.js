@@ -1478,7 +1478,7 @@ async function _invoicePrint(note) {
     const raw = note.raw || '';
     const body = raw
         .replace(/^---[\s\S]*?---\s*\n/, '')   // strip frontmatter
-        .replace(/```ledger[\s\S]*?```/g, '')   // strip ledger accounting block
+        .replace(/\n---\n+```ledger[\s\S]*?```/g, '')   // strip ledger block + its preceding hr
         .trim();
     const rendered = await NbMain.renderMarkdown(body, note.selector);
     const win = window.open('', '_blank', 'width=820,height=700');
@@ -1494,7 +1494,7 @@ table { border-collapse:collapse; width:100%; margin:8px 0; }
 th, td { border:1px solid #bbb; padding:5px 10px; text-align:left; }
 th { background:#f0f0f0; }
 pre, code { font-size:12px; white-space:pre-wrap; }
-@media print { @page { margin:0.75in; } }
+@media print { @page { margin:0.75in; } body { margin-bottom:0 !important; } }
 </style>
 </head><body>${rendered}</body></html>`);
     win.document.close();
