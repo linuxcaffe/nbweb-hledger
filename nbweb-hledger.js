@@ -1489,6 +1489,7 @@ async function _invoicePrint(note) {
 <link rel="stylesheet" href="/styles.css">
 <style>
 /* Kill app layout rules that cause a blank second page in print */
+html { font-size: 12px !important; }
 html, body { height: auto !important; min-height: 0 !important;
              overflow: visible !important; display: block !important; }
 body { max-width: 720px; margin: 24px auto; padding: 0 24px;
