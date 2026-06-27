@@ -1208,7 +1208,10 @@ function _renderSpecialtyNote(note) {
             <button class="nb-specialty-action" data-action="print-invoice" title="Print / export invoice">🖨️ Print</button>
            </div>`
         : '';
-    const body = note.type === 'project' ? _injectDateContext(note.body || '') : (note.body || '');
+    let body = note.type === 'project' ? _injectDateContext(note.body || '') : (note.body || '');
+    // Style INVOICED blockquote markers — CSS can't select by text content
+    body = body.replace(/^> (INVOICED:.+)$/gm,
+        '<div class="nb-invoiced-marker">$1</div>');
     const headerHtml = `<div class="nb-specialty-header" data-selector="${_esc(note.selector || '')}">
         <span class="nb-specialty-icon">${icon}</span>
         <span class="nb-specialty-label">${_esc(label)}</span>
