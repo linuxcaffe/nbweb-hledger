@@ -1486,15 +1486,23 @@ async function _invoicePrint(note) {
     win.document.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <title>${note.title || 'Invoice'}</title>
-<link rel="stylesheet" href="/styles.css">
 <style>
-html, body { background:#fff !important; color:#000 !important; font-size:14px !important; margin:0; padding:0; }
-body { max-width:720px; margin:32px auto; padding:0 24px; }
-table { border-collapse:collapse; width:100%; margin:8px 0; }
-th, td { border:1px solid #bbb; padding:5px 10px; text-align:left; }
-th { background:#f0f0f0; }
-pre, code { font-size:12px; white-space:pre-wrap; }
-@media print { @page { margin:0.75in; } body { margin-bottom:0 !important; } }
+*, *::before, *::after { box-sizing: border-box; }
+html { font-size: 14px; }
+body { font-family: Georgia, serif; color: #000; background: #fff;
+       max-width: 680px; margin: 32px auto; padding: 0 24px; line-height: 1.5; }
+h1 { font-size: 1.4em; margin: 0 0 8px; }
+h2 { font-size: 1.1em; margin: 1.4em 0 6px; }
+p  { margin: 4px 0; }
+hr { border: none; border-top: 1px solid #ccc; margin: 16px 0; }
+table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 0.92em; }
+th, td { border: 1px solid #bbb; padding: 5px 10px; text-align: left; }
+th { background: #f4f4f4; font-weight: bold; }
+pre, code { font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+strong { font-weight: bold; }
+em { font-style: italic; }
+@page { margin: 0.75in; }
+@media print { body { margin: 0; padding: 0; } }
 </style>
 </head><body>${rendered}</body></html>`);
     win.document.close();
