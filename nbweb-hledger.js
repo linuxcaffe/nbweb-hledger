@@ -1125,6 +1125,7 @@ const _SPECIALTY_CFG = {
     quote:     { icon: '📋', label: 'Quote' },
     budget:    { icon: '💰', label: 'Budget' },
     project:   { icon: '🏗️', label: 'Project' },
+    reports:   { icon: '📊', label: 'Reports' },
     invoice:   { icon: '🧾', label: 'Invoice' },
 };
 
@@ -1187,11 +1188,17 @@ function _renderSpecialtyNote(note) {
     const todayBtn  = note.type === 'project'
         ? `<button class="nb-specialty-today" title="Append today's entry and edit">+ Today</button>`
         : '';
+    const reportsActions = note.type === 'reports'
+        ? `<div class="nb-specialty-actions">
+            <button class="nb-specialty-action" data-action="quote"   title="Generate quote">📋 Quote</button>
+            <button class="nb-specialty-action" data-action="invoice" title="Generate invoice">🧾 Invoice</button>
+           </div>`
+        : '';
     const body = note.type === 'project' ? _injectDateContext(note.body || '') : (note.body || '');
     const headerHtml = `<div class="nb-specialty-header" data-selector="${_esc(note.selector || '')}">
         <span class="nb-specialty-icon">${icon}</span>
         <span class="nb-specialty-label">${_esc(label)}</span>
-        ${pillsHtml}${todayBtn}
+        ${pillsHtml}${todayBtn}${reportsActions}
     </div>`;
     return headerHtml + NbMain.renderMarkdown(body, note.selector);
 }
@@ -1311,5 +1318,28 @@ document.addEventListener('click', e => {
     const note = NbMain.activeNote();
     if (note) _appendTodayAndEdit(note);
 });
+
+// Delegated click handler for reports action buttons (Quote, Invoice, …)
+document.addEventListener('click', e => {
+    const btn = e.target.closest('.nb-specialty-action');
+    if (!btn) return;
+    e.preventDefault();
+    const action = btn.dataset.action;
+    const note   = NbMain.activeNote();
+    if (action === 'quote')   _reportsGenQuote(note);
+    if (action === 'invoice') _reportsGenInvoice(note);
+});
+
+function _reportsGenQuote(note) {
+    // TODO: call gen-quote backend; for now surface a notice
+    NbMain.showToast?.('Quote generation coming soon', 'info') ||
+        alert('Quote generation: not yet implemented');
+}
+
+function _reportsGenInvoice(note) {
+    // TODO: call gen-invoice backend; for now surface a notice
+    NbMain.showToast?.('Invoice generation coming soon', 'info') ||
+        alert('Invoice generation: not yet implemented');
+}
 
 })();
