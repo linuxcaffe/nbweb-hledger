@@ -1180,11 +1180,19 @@ async function _appendTodayAndEdit(note) {
 
 function _renderSpecialtyNote(note) {
     const { icon, label } = _SPECIALTY_CFG[note.type] || { icon: '📋', label: note.type };
-    const pills = [];
-    if (note.meta?.status)       pills.push(note.meta.status);
-    if (note.meta?.billing_type) pills.push(note.meta.billing_type);
-    if (note.meta?.client)       pills.push(String(note.meta.client).replace(/^contacts:/, '').replace(/\.md$/, ''));
-    const pillsHtml = pills.map(p => `<span class="nb-specialty-pill">${_esc(p)}</span>`).join('');
+    let pills = [], pillsHtml = '';
+    if (note.type === 'invoice') {
+        const statusCls = note.meta?.status === 'paid' ? ' nb-pill-paid' : ' nb-pill-due';
+        if (note.meta?.invoice_num) pills.push(`<span class="nb-specialty-pill">${_esc(note.meta.invoice_num)}</span>`);
+        if (note.meta?.due)         pills.push(`<span class="nb-specialty-pill">due: ${_esc(note.meta.due)}</span>`);
+        if (note.meta?.status)      pills.push(`<span class="nb-specialty-pill${statusCls}">${_esc(note.meta.status)}</span>`);
+        pillsHtml = pills.join('');
+    } else {
+        if (note.meta?.status)       pills.push(note.meta.status);
+        if (note.meta?.billing_type) pills.push(note.meta.billing_type);
+        if (note.meta?.client)       pills.push(String(note.meta.client).replace(/^contacts:/, '').replace(/\.md$/, ''));
+        pillsHtml = pills.map(p => `<span class="nb-specialty-pill">${_esc(p)}</span>`).join('');
+    }
     const todayBtn  = note.type === 'project'
         ? `<button class="nb-specialty-today" title="Append today's entry and edit">+ Today</button>`
         : '';
@@ -1194,11 +1202,17 @@ function _renderSpecialtyNote(note) {
             <button class="nb-specialty-action" data-action="invoice" title="Generate invoice">🧾 Invoice</button>
            </div>`
         : '';
+    const invoiceActions = note.type === 'invoice'
+        ? `<div class="nb-specialty-actions">
+            ${note.meta?.status !== 'paid' ? '<button class="nb-specialty-action" data-action="mark-paid" title="Record payment received">✅ Mark Paid</button>' : ''}
+            <button class="nb-specialty-action" data-action="print-invoice" title="Print / export invoice">🖨️ Print</button>
+           </div>`
+        : '';
     const body = note.type === 'project' ? _injectDateContext(note.body || '') : (note.body || '');
     const headerHtml = `<div class="nb-specialty-header" data-selector="${_esc(note.selector || '')}">
         <span class="nb-specialty-icon">${icon}</span>
         <span class="nb-specialty-label">${_esc(label)}</span>
-        ${pillsHtml}${todayBtn}${reportsActions}
+        ${pillsHtml}${todayBtn}${reportsActions}${invoiceActions}
     </div>`;
     return headerHtml + NbMain.renderMarkdown(body, note.selector);
 }
@@ -1319,27 +1333,149 @@ document.addEventListener('click', e => {
     if (note) _appendTodayAndEdit(note);
 });
 
-// Delegated click handler for reports action buttons (Quote, Invoice, …)
+// Delegated click handler for specialty action buttons
 document.addEventListener('click', e => {
     const btn = e.target.closest('.nb-specialty-action');
     if (!btn) return;
     e.preventDefault();
     const action = btn.dataset.action;
     const note   = NbMain.activeNote();
-    if (action === 'quote')   _reportsGenQuote(note);
-    if (action === 'invoice') _reportsGenInvoice(note);
+    if (action === 'quote')         _reportsGenQuote(note);
+    if (action === 'invoice')       _reportsGenInvoice(note);
+    if (action === 'mark-paid')     _invoiceMarkPaid(note);
+    if (action === 'print-invoice') _invoicePrint(note);
 });
 
 function _reportsGenQuote(note) {
-    // TODO: call gen-quote backend; for now surface a notice
-    NbMain.showToast?.('Quote generation coming soon', 'info') ||
-        alert('Quote generation: not yet implemented');
+    alert('Quote generation: not yet implemented');
 }
 
-function _reportsGenInvoice(note) {
-    // TODO: call gen-invoice backend; for now surface a notice
-    NbMain.showToast?.('Invoice generation coming soon', 'info') ||
-        alert('Invoice generation: not yet implemented');
+async function _reportsGenInvoice(note) {
+    const btn = document.querySelector('.nb-specialty-action[data-action="invoice"]');
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    try {
+        const r = await fetch(`/api/t/invoice/preflight?selector=${encodeURIComponent(note.selector || '')}`);
+        const data = await r.json();
+        if (data.error) throw new Error(data.error);
+        _showInvoiceDialog(note, data);
+    } catch (e) {
+        alert(`Invoice preflight failed: ${e.message}`);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🧾 Invoice'; }
+    }
+}
+
+function _showInvoiceDialog(note, d) {
+    document.getElementById('nb-invoice-dialog')?.remove();
+
+    const fmt  = n => `$${Number(n).toFixed(2)}`;
+    const hasMat = d.materials_gross > 0;
+
+    const labourTotal  = d.labour_total || 0;
+    const matGross     = d.materials_gross || 0;
+    const matSub       = d.materials_subtotal || 0;
+    const HST          = 0.13;
+    const isCash       = d.billing_type === 'cash';
+    const invoiceTotal = isCash
+        ? Math.round((labourTotal + matGross) * 100) / 100
+        : Math.round(((labourTotal + matSub) * (1 + HST)) * 100) / 100;
+    const taxNote      = isCash
+        ? `cash — no HST collected`
+        : `+ HST ${fmt((labourTotal + matSub) * HST)} = ${fmt(invoiceTotal)}`;
+
+    const labourRow = d.labour_hours > 0
+        ? `<tr><td>Labour</td><td>${d.labour_hours} h × ${fmt(d.rate)}</td><td>${fmt(labourTotal)}</td></tr>`
+        : '';
+    const matRow = hasMat
+        ? `<tr><td>Materials</td><td>cost + HST</td><td>${fmt(matGross)}</td></tr>`
+        : '';
+
+    const el = document.createElement('div');
+    el.id = 'nb-invoice-dialog';
+    el.className = 'nb-invoice-overlay';
+    el.innerHTML = `
+        <div class="nb-invoice-panel">
+            <div class="nb-invoice-hdr">🧾 Generate Invoice</div>
+            <div class="nb-invoice-sub">${_esc(d.project)} · ${_esc(d.client)} · <em>${_esc(d.billing_type)}</em></div>
+            <table class="nb-invoice-tbl">
+                <thead><tr><th>Item</th><th>Detail</th><th>Amount</th></tr></thead>
+                <tbody>${labourRow}${matRow}</tbody>
+                <tfoot><tr>
+                    <td colspan="2"><strong>Total</strong></td>
+                    <td><strong>${fmt(invoiceTotal)}</strong> <span class="nb-inv-tax">${_esc(taxNote)}</span></td>
+                </tr></tfoot>
+            </table>
+            <div class="nb-invoice-fields">
+                <label>Invoice #<input id="nb-inv-num"   value="${_esc(d.suggested_num)}"></label>
+                <label>Date     <input id="nb-inv-date"  type="date" value="${_esc(d.date)}"></label>
+                <label>Due      <input id="nb-inv-due"   value="${_esc(d.due)}"></label>
+                <label>Notes    <input id="nb-inv-notes" placeholder="optional"></label>
+            </div>
+            <div class="nb-invoice-btns">
+                <button id="nb-inv-cancel">Cancel</button>
+                <button id="nb-inv-gen" class="nb-inv-primary">Generate</button>
+            </div>
+        </div>`;
+
+    document.body.appendChild(el);
+    document.getElementById('nb-inv-cancel').addEventListener('click', () => el.remove());
+    el.addEventListener('click', e => { if (e.target === el) el.remove(); });
+
+    document.getElementById('nb-inv-gen').addEventListener('click', async () => {
+        const genBtn = document.getElementById('nb-inv-gen');
+        genBtn.disabled = true; genBtn.textContent = '…';
+        try {
+            const r = await fetch('/api/t/invoice/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    selector:    note.selector,
+                    invoice_num: document.getElementById('nb-inv-num').value.trim(),
+                    date:        document.getElementById('nb-inv-date').value,
+                    due:         document.getElementById('nb-inv-due').value.trim(),
+                    notes:       document.getElementById('nb-inv-notes').value.trim(),
+                }),
+            });
+            const result = await r.json();
+            if (!result.success) throw new Error(result.error || 'generate failed');
+            el.remove();
+            NbMain.openNote(result.selector);
+        } catch (e) {
+            alert(`Invoice generation failed: ${e.message}`);
+            genBtn.disabled = false; genBtn.textContent = 'Generate';
+        }
+    });
+}
+
+async function _invoiceMarkPaid(note) {
+    if (!note?.selector) return;
+    const payDate = prompt('Payment date (YYYY-MM-DD):', new Date().toISOString().slice(0, 10));
+    if (!payDate) return;
+    const raw = note.raw || '';
+    // Update status: due → paid, add paid: date to FM
+    let updated = raw
+        .replace(/^(status:\s*)due(\s*)$/m, `$1paid$2`)
+        .replace(/^(status:\s*)paid(\s*)$/m, `$1paid$2`);  // idempotent
+    if (!/^paid:/m.test(updated)) {
+        // Insert paid: after status: line
+        updated = updated.replace(/^(status:.+)$/m, `$1\npaid: "${payDate}"`);
+    } else {
+        updated = updated.replace(/^(paid:\s*).+$/m, `$1"${payDate}"`);
+    }
+    const r = await fetch('/api/note', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ selector: note.selector, content: updated }),
+    });
+    const d = await r.json();
+    if (d.error) { alert(`Mark paid failed: ${d.error}`); return; }
+    NbMain.openNote(note.selector);
+}
+
+function _invoicePrint(note) {
+    // Open the current preview pane in a print context.
+    // The simplest approach: window.print() after focusing the preview.
+    window.print();
 }
 
 })();
