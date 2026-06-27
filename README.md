@@ -4,6 +4,8 @@ An [nb-web](https://github.com/linuxcaffe/nb-web) plugin that adds plain-text ac
 
 This is not a replacement for hledger's CLI — it's an opinionated knowledge layer on top: Canadian tax domain packs, a Chart of Accounts setup wizard, account autocomplete, specialty note types, and a full invoice generation pipeline.
 
+The closest thing in the professional world is a bespoke time-billing system that costs thousands a year and locks your data in a proprietary format. NbWeb-hledger gives you something better: type hours once, in context, in your own words — and a sharp invoice with proper double-entry accounting falls out automatically. The diary *is* the books. Plain Markdown, git-tracked, self-hosted, understood end-to-end.
+
 **Three audiences, in priority order:**
 1. **Personal finance** — individual, Canadian, TFSA/RRSP/FHSA, T1 tax prep
 2. **Small business / service business** — sole proprietor, HST by province, T2125, project diaries, invoicing
