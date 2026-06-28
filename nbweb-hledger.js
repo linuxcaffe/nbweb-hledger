@@ -1116,110 +1116,6 @@ async function _buildPluginContent(el, notebook, config) {
     }
 }
 
-// ── Service business specialty types ─────────────────────────────────────────
-
-const _SPECIALTY_CFG = {
-    tools:     { icon: '🔧', label: 'Tool Inventory' },
-    materials: { icon: '📦', label: 'Materials Catalog' },
-    transport: { icon: '🚗', label: 'Transport' },
-    quote:     { icon: '📋', label: 'Quote' },
-    budget:    { icon: '💰', label: 'Budget' },
-    project:   { icon: '🏗️', label: 'Project' },
-    reports:   { icon: '📊', label: 'Reports' },
-    invoice:   { icon: '🧾', label: 'Invoice' },
-};
-
-// Inject the nearest preceding date heading into timedot blocks that have no date line.
-// Runs as text pre-processing before renderMarkdown so the timedot renderer gets full input.
-function _injectDateContext(body) {
-    const lines = body.split('\n');
-    let currentDate = null;
-    const result = [];
-    let inBlock = false;
-    let blockHeader = '';
-    let blockLines = [];
-    for (const line of lines) {
-        if (!inBlock) {
-            const m = line.match(/^#{1,6}\s+(\d{4}-\d{2}-\d{2})/);
-            if (m) currentDate = m[1];
-            if (/^```timedot/.test(line)) {
-                inBlock = true; blockHeader = line; blockLines = [];
-            } else {
-                result.push(line);
-            }
-        } else {
-            if (line.startsWith('```')) {
-                const hasDate = blockLines.some(l => /^\d{4}[-/]\d{2}[-/]\d{2}/.test(l.trim()));
-                result.push(blockHeader);
-                if (!hasDate && currentDate) result.push(currentDate);
-                result.push(...blockLines);
-                result.push(line);
-                inBlock = false;
-            } else {
-                blockLines.push(line);
-            }
-        }
-    }
-    return result.join('\n');
-}
-
-// Append today's date heading to a project note if it isn't already there, then open editor.
-async function _appendTodayAndEdit(note) {
-    const today = new Date().toISOString().slice(0, 10);
-    const heading = `## ${today}`;
-    if (!(note.body || '').includes(heading)) {
-        const newBody = (note.body || '').trimEnd() + `\n\n${heading}\n\n`;
-        await fetch('/api/note', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ selector: note.selector, content: newBody }),
-        });
-    }
-    NbMain.openEditor(note.selector);
-}
-
-function _renderSpecialtyNote(note) {
-    const { icon, label } = _SPECIALTY_CFG[note.type] || { icon: '📋', label: note.type };
-    let pills = [], pillsHtml = '';
-    if (note.type === 'invoice') {
-        const statusCls = note.meta?.status === 'paid' ? ' nb-pill-paid' : ' nb-pill-due';
-        if (note.meta?.invoice_num) pills.push(`<span class="nb-specialty-pill">${_esc(note.meta.invoice_num)}</span>`);
-        if (note.meta?.due)         pills.push(`<span class="nb-specialty-pill">due: ${_esc(note.meta.due)}</span>`);
-        if (note.meta?.status)      pills.push(`<span class="nb-specialty-pill${statusCls}">${_esc(note.meta.status)}</span>`);
-        pillsHtml = pills.join('');
-    } else {
-        if (note.meta?.status)       pills.push(note.meta.status);
-        if (note.meta?.billing_type) pills.push(note.meta.billing_type);
-        if (note.meta?.client)       pills.push(String(note.meta.client).replace(/^contacts:/, '').replace(/\.md$/, ''));
-        pillsHtml = pills.map(p => `<span class="nb-specialty-pill">${_esc(p)}</span>`).join('');
-    }
-    const todayBtn  = note.type === 'project'
-        ? `<button class="nb-specialty-today" title="Append today's entry and edit">+ Today</button>`
-        : '';
-    const reportsActions = note.type === 'reports'
-        ? `<div class="nb-specialty-actions">
-            <button class="nb-specialty-action" data-action="quote"   title="Generate quote">📋 Quote</button>
-            <button class="nb-specialty-action" data-action="invoice" title="Generate invoice">🧾 Invoice</button>
-           </div>`
-        : '';
-    const invoiceActions = note.type === 'invoice'
-        ? `<div class="nb-specialty-actions">
-            ${note.meta?.status !== 'paid' ? '<button class="nb-specialty-action" data-action="mark-paid" title="Record payment received">✅ Mark Paid</button>' : ''}
-            <button class="nb-specialty-action" data-action="print-invoice" title="Print / export invoice">🖨️ Print</button>
-           </div>`
-        : '';
-    let body = note.type === 'project' ? _injectDateContext(note.body || '') : (note.body || '');
-    // Style INVOICED blockquote markers — CSS can't select by text content
-    body = body.replace(/^> (INVOICED:.+)$/gm,
-        '<div class="nb-invoiced-marker">$1</div>');
-    const headerHtml = `<div class="nb-specialty-header" data-selector="${_esc(note.selector || '')}">
-        <span class="nb-specialty-icon">${icon}</span>
-        <span class="nb-specialty-label">${_esc(label)}</span>
-        ${pillsHtml}${todayBtn}${reportsActions}${invoiceActions}
-    </div>`;
-    return headerHtml + NbMain.renderMarkdown(body, note.selector);
-}
-
 // ── previewRenderer ───────────────────────────────────────────────────────────
 
 async function _renderAccountNote(note) {
@@ -1307,8 +1203,7 @@ NbWeb.registerModule('hledger', {
         if (note.type === 'template') return '📋';
         if (note.type === 'period')   return '📅';
         if (note.type === 'report')   return '📊';
-        if (_SPECIALTY_CFG[note.type]) return _SPECIALTY_CFG[note.type].icon;
-        return null;
+        return window.NbSpecialty?.cfg?.[note.type]?.icon ?? null;
     },
 
     listTitle: note => {
@@ -1318,23 +1213,27 @@ NbWeb.registerModule('hledger', {
         return acct + lbl || null;
     },
 
-    previewRenderer: note => {
-        if (note.type === 'account') return _renderAccountNote(note);
-        if (_SPECIALTY_CFG[note.type]) return _renderSpecialtyNote(note);
-        return null;
-    },
+    previewRenderer: note => note.type === 'account' ? _renderAccountNote(note) : null,
 });
+
+// Wire accounting action buttons into the specialty header via NbSpecialty hook.
+// Renderer lives in nbweb-codeblocks; these actions only appear in hledger notebooks.
+if (window.NbSpecialty) {
+    window.NbSpecialty.getActions = note => {
+        if (note.type === 'reports') return `<div class="nb-specialty-actions">
+            <button class="nb-specialty-action" data-action="quote"   title="Generate quote">📋 Quote</button>
+            <button class="nb-specialty-action" data-action="invoice" title="Generate invoice">🧾 Invoice</button>
+           </div>`;
+        if (note.type === 'invoice') return `<div class="nb-specialty-actions">
+            ${note.meta?.status !== 'paid' ? '<button class="nb-specialty-action" data-action="mark-paid" title="Record payment received">✅ Mark Paid</button>' : ''}
+            <button class="nb-specialty-action" data-action="print-invoice" title="Print / export invoice">🖨️ Print</button>
+           </div>`;
+        return '';
+    };
+}
 
 // Expose accounts getter so NbWeb-codeblocks can wire autocomplete
 window.NbHledger = { getAccounts: _getAccounts };
-
-// Delegated click handler for the "+ Today" button in project note headers
-document.addEventListener('click', e => {
-    if (!e.target.closest('.nb-specialty-today')) return;
-    e.preventDefault();
-    const note = NbMain.activeNote();
-    if (note) _appendTodayAndEdit(note);
-});
 
 // Delegated click handler for specialty action buttons
 document.addEventListener('click', e => {
