@@ -1157,6 +1157,12 @@ NbWeb.registerModule('hledger', {
     description: 'Plain-text accounting with domain knowledge — Canadian CoA, tax mappings, journal health',
     helpUrl:     '/plugins/nbweb-hledger.md',
 
+    notebookSetup: {
+        configFile:    '.nb-hledger.json',
+        defaultConfig: {},
+        label:         'Accounting',
+    },
+
     detect: notebooks => notebooks.filter(nb => nb.hledger != null),
 
     requirementCheck: async () => {
