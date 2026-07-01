@@ -42,6 +42,26 @@ The closest thing in the professional world is a bespoke time-billing system tha
    { "url": "file:///home/YOU/dev/nbweb-hledger/nbweb-hledger.js", "enabled": true }
    ```
 4. Create `.nb-hledger.json` in a notebook to activate the plugin for that notebook.
+5. *(Optional)* Install the shared reference notebook:
+   ```bash
+   nb notebooks add accounting_ref https://github.com/linuxcaffe/nbweb-hledger-ref
+   ```
+
+---
+
+## accounting_ref — Shared Reference Notebook
+
+A standalone read-only notebook shipped separately from the plugin. Profile-agnostic: useful for personal finance, service business, film, and retail installs alike.
+
+**Contains:**
+- hledger man pages, cookbook, and cheat sheets
+- Canadian tax forms and guides (T1, T2125, T4, HST remittance)
+- CRA rate tables: mileage, home-office, capital cost allowance classes
+- Tutorial journals with worked examples
+
+**Update model:** `nb sync` on `accounting_ref:` propagates CRA rate changes and updated forms to every install that opted in — no manual PDF hunting.
+
+> **Status:** planned — content currently lives in `djp:accounting/reference/`; will be extracted into its own publishable nb notebook.
 
 ---
 
@@ -155,7 +175,7 @@ Specialty header shows live budget totals and **Quote** / **Invoice** action but
 Templates live in `djp:.templates/invoice-cash.md` (or `invoice-tm.md`). The plugin looks in the notebook's `.templates/` first, then `~/.nb/.templates/`.
 
 Template variables: `{{invoice_num}}`, `{{issued}}`, `{{due}}`, `{{to_block}}`, `{{re_line}}`,
-`{{labour_lines}}`, `{{total_line}}`, `{{subtotal}}`, `{{hst}}`, `{{ar_total}}`,
+`{{labour_lines}}`, `{{expense_lines}}`, `{{total_line}}`, `{{subtotal}}`, `{{hst}}`, `{{ar_total}}`,
 `{{notes_section}}`, `{{ledger_block}}`,
 `{{client}}`, `{{client_raw}}`, `{{project}}`, `{{rate}}`, `{{reports_selector}}`
 
