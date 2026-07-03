@@ -1219,6 +1219,7 @@ NbWeb.registerModule('hledger', {
         return acct + lbl || null;
     },
 
+    previewRendererDetect: note => note.type === 'account',
     previewRenderer: note => note.type === 'account' ? _renderAccountNote(note) : null,
 });
 
