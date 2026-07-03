@@ -1,0 +1,18 @@
+# nbweb-hledger plugin — load-bearing identifiers
+
+# ── Account setup ─────────────────────────────────────────────────────────────
+nbweb-hledger.js:_buildCoaWizard
+nbweb-hledger.js:_buildSetupPanel
+nbweb-hledger.js:_createAccountNotes
+nbweb-hledger.js:_getAccounts
+
+# ── Note renderers ────────────────────────────────────────────────────────────
+nbweb-hledger.js:_renderAccountNote
+nbweb-hledger.js:_buildPluginContent
+nbweb-hledger.js:_buildBookkeeperPanel
+
+# ── Invoice pipeline ──────────────────────────────────────────────────────────
+nbweb-hledger.js:_reportsGenInvoice
+nbweb-hledger.js:_showInvoiceDialog
+nbweb-hledger.js:_invoiceMarkPaid
+nbweb-hledger.js:_invoicePrint
