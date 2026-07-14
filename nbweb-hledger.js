@@ -1165,7 +1165,15 @@ async function _buildBookkeeperPanel(el, notebook, config) {
         return;
     }
 
-    const q = cmd => `/api/hledger-query?q=${encodeURIComponent(journal + ' ' + cmd)}&format=text`;
+    // Don't prepend `journal` into the query string — api_hledger_query only
+    // recognizes a leading token as a file path if it starts with ~ or /, and
+    // the notebook-root convention stores journal: as a relative path
+    // ("accounting/journals/main.journal"), which would otherwise get parsed
+    // as the hledger *command* itself ("Command not allowed: accounting/...").
+    // Pass notebook= instead and let the backend resolve it from that
+    // notebook's own config (_hledger_config_for_notebook) — same pattern
+    // _getAccounts() already uses for /api/hledger/accounts.
+    const q = cmd => `/api/hledger-query?q=${encodeURIComponent(cmd)}&notebook=${encodeURIComponent(notebook)}&format=text`;
 
     el.innerHTML = `
         <div class="nb-plugin-section" id="nb-hl-bk-health">
