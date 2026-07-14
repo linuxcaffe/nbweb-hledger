@@ -1389,6 +1389,20 @@ if (window.NbSpecialty) {
             ${note.meta?.status !== 'paid' ? '<button class="nb-specialty-action" data-action="mark-paid" title="Record payment received">✅ Mark Paid</button>' : ''}
             <button class="nb-specialty-action" data-action="print-invoice" title="Print / export invoice">🖨️ Print</button>
            </div>`;
+        if (note.type === 'quote') return `<div class="nb-specialty-actions">
+            <button class="nb-specialty-action" data-action="print-invoice" title="Print / export quote">🖨️ Print</button>
+           </div>`;
+        if (note.type === 'item') {
+            const txns   = _extractLedgerTransactions(note.annotation);
+            const isSold = txns.some(t => t.postings.some(p => p.account === 'Assets:Inventory' && p.amount < 0));
+            const warn   = note.meta?.status === 'sold' && !isSold
+                ? '<span class="nb-source-warn">sold, no sale recorded</span>' : '';
+            return `<div class="nb-specialty-actions">
+                ${warn}
+                ${note.meta?.status !== 'sold' ? '<button class="nb-specialty-action" data-action="mark-sold" title="Mark as sold">✅ Sold</button>' : ''}
+                <button class="nb-specialty-action" data-action="item-summary" title="Cost / margin summary">📊 Summary</button>
+               </div>`;
+        }
         return '';
     };
 }
@@ -1407,10 +1421,123 @@ document.addEventListener('click', e => {
     if (action === 'invoice')       _reportsGenInvoice(note);
     if (action === 'mark-paid')     _invoiceMarkPaid(note);
     if (action === 'print-invoice') _invoicePrint(note);
+    if (action === 'mark-sold')     _itemMarkSold(note);
+    if (action === 'item-summary')  _itemSummary(note);
 });
 
-function _reportsGenQuote(note) {
-    alert('Quote generation: not yet implemented');
+async function _reportsGenQuote(note, scope = 'future') {
+    const btn = document.querySelector('.nb-specialty-action[data-action="quote"]');
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    try {
+        const r = await fetch(`/api/t/quote/preflight?selector=${encodeURIComponent(note.selector || '')}&scope=${scope}`);
+        const data = await r.json();
+        if (data.error) throw new Error(data.error);
+        _showQuoteDialog(note, data);
+    } catch (e) {
+        alert(`Quote preflight failed: ${e.message}`);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '📋 Quote'; }
+    }
+}
+
+function _showQuoteDialog(note, d) {
+    document.getElementById('nb-quote-dialog')?.remove();
+
+    const fmt  = n => `$${Number(n).toFixed(2)}`;
+    const hasMat = d.materials_gross > 0;
+
+    const labourTotal = d.labour_total || 0;
+    const matGross    = d.materials_gross || 0;
+    const matSub      = d.materials_subtotal || 0;
+    const HST         = 0.13;
+    const isCash      = d.billing_type === 'cash';
+    const quoteTotal  = isCash
+        ? Math.round((labourTotal + matGross) * 100) / 100
+        : Math.round(((labourTotal + matSub) * (1 + HST)) * 100) / 100;
+    const taxNote     = isCash
+        ? `cash — no HST`
+        : `+ HST ${fmt((labourTotal + matSub) * HST)} = ${fmt(quoteTotal)}`;
+
+    const labourRow = d.labour_hours > 0
+        ? `<tr><td>Labour (est.)</td><td>${d.labour_hours} h × ${fmt(d.rate)}</td><td>${fmt(labourTotal)}</td></tr>`
+        : '';
+    const matRow = hasMat
+        ? `<tr><td>Materials (est.)</td><td>cost + HST</td><td>${fmt(matGross)}</td></tr>`
+        : '';
+    const emptyNote = d.empty
+        ? `<div class="nb-inv-tax">No guesstimated entries in this scope yet — log timedot/csv
+           blocks dated in the future (or anywhere, for "whole job") to project a quote.</div>`
+        : '';
+
+    const el = document.createElement('div');
+    el.id = 'nb-quote-dialog';
+    el.className = 'nb-invoice-overlay';
+    el.innerHTML = `
+        <div class="nb-invoice-panel">
+            <div class="nb-invoice-hdr">📋 Generate Quote — <em>a projection, not a billing event</em></div>
+            <div class="nb-invoice-sub">${_esc(d.project)} · ${_esc(d.client)} · <em>${_esc(d.billing_type)}</em></div>
+            <label>Scope
+                <select id="nb-quo-scope">
+                    <option value="future" ${d.scope === 'future' ? 'selected' : ''}>Remaining work (from tomorrow on)</option>
+                    <option value="all" ${d.scope === 'all' ? 'selected' : ''}>Whole job (start to finish)</option>
+                </select>
+            </label>
+            <table class="nb-invoice-tbl">
+                <thead><tr><th>Item</th><th>Detail</th><th>Amount</th></tr></thead>
+                <tbody>${labourRow}${matRow}</tbody>
+                <tfoot><tr>
+                    <td colspan="2"><strong>Estimated Total</strong></td>
+                    <td><strong>${fmt(quoteTotal)}</strong> <span class="nb-inv-tax">${_esc(taxNote)}</span></td>
+                </tr></tfoot>
+            </table>
+            ${emptyNote}
+            <div class="nb-invoice-fields">
+                <label>Quote #     <input id="nb-quo-num"   value="${_esc(d.suggested_num)}"></label>
+                <label>Date       <input id="nb-quo-date"  type="date" value="${_esc(d.date)}"></label>
+                <label>Valid until<input id="nb-quo-valid" placeholder="optional"></label>
+                <label>Notes      <input id="nb-quo-notes" placeholder="optional"></label>
+            </div>
+            <div class="nb-invoice-btns">
+                <button id="nb-quo-cancel">Cancel</button>
+                <button id="nb-quo-gen" class="nb-inv-primary">Generate</button>
+            </div>
+        </div>`;
+
+    document.body.appendChild(el);
+    document.getElementById('nb-quo-cancel').addEventListener('click', () => el.remove());
+    el.addEventListener('click', e => { if (e.target === el) el.remove(); });
+
+    // Re-preflight when scope changes, refreshing this same dialog in place
+    document.getElementById('nb-quo-scope').addEventListener('change', async ev => {
+        el.remove();
+        await _reportsGenQuote(note, ev.target.value);
+    });
+
+    document.getElementById('nb-quo-gen').addEventListener('click', async () => {
+        const genBtn = document.getElementById('nb-quo-gen');
+        genBtn.disabled = true; genBtn.textContent = '…';
+        try {
+            const r = await fetch('/api/t/quote/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    selector:    note.selector,
+                    quote_num:   document.getElementById('nb-quo-num').value.trim(),
+                    scope:       document.getElementById('nb-quo-scope').value,
+                    date:        document.getElementById('nb-quo-date').value,
+                    valid_until: document.getElementById('nb-quo-valid').value.trim(),
+                    notes:       document.getElementById('nb-quo-notes').value.trim(),
+                }),
+            });
+            const result = await r.json();
+            if (!result.success) throw new Error(result.error || 'generate failed');
+            el.remove();
+            NbMain.openNote(result.selector);
+        } catch (e) {
+            alert(`Quote generation failed: ${e.message}`);
+            genBtn.disabled = false; genBtn.textContent = 'Generate';
+        }
+    });
 }
 
 async function _reportsGenInvoice(note) {
@@ -1566,6 +1693,110 @@ th { background: #f4f4f4; }
 </head><body>${rendered}</body></html>`);
     win.document.close();
     win.addEventListener('load', () => { win.focus(); win.print(); }, { once: true });
+}
+
+// ── Item specialty actions (Sold / Summary) ───────────────────────────────────
+// note.annotation is already present on the note object fetched by /api/note —
+// no extra request needed to read an item's own cost/sale ledger blocks.
+
+const _ITEM_FENCE_OPEN  = /^```ledger\s*$/;
+const _ITEM_FENCE_CLOSE = /^```\s*$/;
+const _ITEM_DATE_LINE   = /^(\d{4}-\d{2}-\d{2})\s+\S/;
+
+function _parseLedgerPosting(line) {
+    if (!/^\s+\S/.test(line)) return null;
+    const m = /^\s+(.+?)\s{2,}(-?[\d,]+\.?\d*)\s*[A-Za-z]{2,5}\b.*$/.exec(line);
+    if (m) return { account: m[1].trim(), amount: parseFloat(m[2].replace(/,/g, '')) };
+    const bare = /^\s+(\S.*?)\s*(?:;.*)?$/.exec(line);
+    return bare ? { account: bare[1].trim(), amount: null } : null;
+}
+
+// Mirrors pfinds:.tools/gen-items-journal.py's extraction: one or more
+// ```ledger blocks, each containing one or more blank-line-delimited
+// transactions. Returns [{date, desc, postings: [{account, amount}]}].
+function _extractLedgerTransactions(annotationText) {
+    if (!annotationText) return [];
+    const txns = [];
+    let inBlock = false, cur = null;
+    const flush = () => { if (cur && cur.date) txns.push(cur); cur = null; };
+    for (const line of annotationText.split('\n')) {
+        if (_ITEM_FENCE_OPEN.test(line))  { inBlock = true; continue; }
+        if (_ITEM_FENCE_CLOSE.test(line) && inBlock) { inBlock = false; flush(); continue; }
+        if (!inBlock) continue;
+        if (!line.trim()) { flush(); continue; }
+        if (line.trim().startsWith(';') && !cur) continue;
+        const m = _ITEM_DATE_LINE.exec(line);
+        if (m && !cur) { cur = { date: m[1], desc: line.trim(), postings: [] }; continue; }
+        if (cur) {
+            const p = _parseLedgerPosting(line);
+            if (p) cur.postings.push(p);
+        }
+    }
+    flush();
+    return txns;
+}
+
+async function _itemMarkSold(note) {
+    if (!note?.selector) return;
+    const raw = note.raw || '';
+    if (!/^status:/m.test(raw)) return;
+    const updated = raw.replace(/^(status:\s*).+$/m, '$1sold');
+    const r = await fetch('/api/note', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ selector: note.selector, content: updated }),
+    });
+    const d = await r.json();
+    if (d.error) { alert(`Mark sold failed: ${d.error}`); return; }
+    NbMain.openNote(note.selector);
+}
+
+function _itemSummary(note) {
+    document.getElementById('nb-item-summary-pop')?.remove();
+    const txns = _extractLedgerTransactions(note?.annotation);
+
+    const pop = document.createElement('div');
+    pop.id = 'nb-item-summary-pop';
+    pop.className = 'nb-lib-help-pop';
+
+    if (!txns.length) {
+        pop.innerHTML = '<div style="padding:10px 12px;color:var(--text-muted);font-size:0.85em">' +
+            'No cost/sale data recorded yet — add a `​```ledger​```` block to this item\'s annotation.</div>';
+    } else {
+        const fmt = n => n == null ? '—' : `$${Number(n).toFixed(2)}`;
+        const acquired = txns.find(t => t.postings.some(p => p.account === 'Assets:Inventory' && p.amount > 0));
+        const sold     = txns.find(t => t.postings.some(p => p.account === 'Assets:Inventory' && p.amount < 0));
+        const cost     = acquired?.postings.find(p => p.account === 'Assets:Inventory')?.amount ?? null;
+        let rows = [];
+        if (acquired) rows.push(`<tr><td>Bought</td><td>${_esc(acquired.date)}</td><td>${fmt(cost)}</td></tr>`);
+        if (sold) {
+            const salePrice = -sold.postings
+                .filter(p => p.account.startsWith('Income:Sales') && p.amount != null)
+                .reduce((s, p) => s + p.amount, 0);
+            const fees = sold.postings
+                .filter(p => p.account.startsWith('Expenses:') && !p.account.startsWith('Expenses:COGS') && p.amount != null)
+                .reduce((s, p) => s + p.amount, 0);
+            const net = salePrice - fees - (cost ?? 0);
+            rows.push(`<tr><td>Sold</td><td>${_esc(sold.date)}</td><td>${fmt(salePrice)}</td></tr>`);
+            rows.push(`<tr><td>Fees</td><td></td><td>${fmt(fees)}</td></tr>`);
+            rows.push(`<tr style="font-weight:600"><td>Net</td><td></td><td>${fmt(net)}</td></tr>`);
+        }
+        pop.innerHTML = `<table style="font-size:12px;border-collapse:collapse;padding:8px 12px">
+            ${rows.join('')}
+        </table>`;
+    }
+
+    document.body.appendChild(pop);
+    const btn = document.querySelector('.nb-specialty-action[data-action="item-summary"]');
+    if (btn) {
+        const rect = btn.getBoundingClientRect();
+        pop.style.top  = (rect.bottom + 4) + 'px';
+        pop.style.left = rect.left + 'px';
+    }
+    const dismiss = e => {
+        if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener('click', dismiss, true); }
+    };
+    setTimeout(() => document.addEventListener('click', dismiss, true), 0);
 }
 
 })();
