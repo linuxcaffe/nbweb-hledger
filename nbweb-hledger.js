@@ -1401,6 +1401,7 @@ if (window.NbSpecialty) {
                 ${warn}
                 ${note.meta?.status !== 'sold' ? '<button class="nb-specialty-action" data-action="mark-sold" title="Mark as sold">✅ Sold</button>' : ''}
                 <button class="nb-specialty-action" data-action="item-summary" title="Cost / margin summary">📊 Summary</button>
+                <button class="nb-specialty-action" data-action="item-fields" title="Fill in item fields (required + optional)">📝 Fields</button>
                </div>`;
         }
         return '';
@@ -1423,6 +1424,7 @@ document.addEventListener('click', e => {
     if (action === 'print-invoice') _invoicePrint(note);
     if (action === 'mark-sold')     _itemMarkSold(note);
     if (action === 'item-summary')  _itemSummary(note);
+    if (action === 'item-fields')   _itemFieldsModal(note);
 });
 
 async function _reportsGenQuote(note, scope = 'future') {
@@ -1797,6 +1799,89 @@ function _itemSummary(note) {
         if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener('click', dismiss, true); }
     };
     setTimeout(() => document.addEventListener('click', dismiss, true), 0);
+}
+
+// Item fields modal — the third of three ways to fill in an item's fields
+// (direct Edit; the existing Frontmatter Changes panel, which only shows
+// fields already present; this modal, which shows every field
+// items/.items.md's constraints: declares, required or optional, blank or
+// not). Reuses NbWeb.fmUtils (parseFields/widget/patch) -- the same helpers
+// the Frontmatter Changes panel uses -- so widget rendering and the save
+// mechanism can't drift from that panel's behaviour.
+async function _itemFieldsModal(note) {
+    if (!note?.selector) return;
+    document.getElementById('nb-item-fields-modal')?.remove();
+
+    let constraints;
+    try {
+        constraints = await fetch(`/api/note/constraints-full?selector=${encodeURIComponent(note.selector)}`).then(r => r.json());
+    } catch (e) {
+        alert(`Could not load item fields: ${e.message}`);
+        return;
+    }
+    if (constraints.error) { alert(`Could not load item fields: ${constraints.error}`); return; }
+    const keys = Object.keys(constraints);
+    if (!keys.length) { alert('No fields declared in this folder\'s .items.md constraints.'); return; }
+
+    const fu = NbWeb.fmUtils;
+    if (!fu) { alert('fmUtils not loaded — codeblocks plugin missing?'); return; }
+
+    const raw     = note.raw || '';
+    const current = Object.fromEntries(fu.parseFields(raw).map(f => [f.key, f.value]));
+
+    const el = document.createElement('div');
+    el.id = 'nb-item-fields-modal';
+    el.className = 'nb-invoice-overlay';
+    el.innerHTML = `
+        <div class="nb-invoice-panel">
+            <div class="nb-invoice-hdr">📝 Item Fields — <em>${_esc(note.meta?.title || note.filename || '')}</em></div>
+            <div class="nb-invoice-sub">Fields marked <span class="nb-item-field-required">*</span> are required — from this folder's .items.md</div>
+            <div class="nb-invoice-fields" id="nb-item-fields-body"></div>
+            <div class="nb-invoice-btns">
+                <button id="nb-item-fields-cancel">Cancel</button>
+                <button id="nb-item-fields-save" class="nb-inv-primary">Save</button>
+            </div>
+        </div>`;
+    document.body.appendChild(el);
+
+    const body = el.querySelector('#nb-item-fields-body');
+    for (const key of keys) {
+        const { widget, required } = constraints[key];
+        const value = current[key] ?? '';
+        const row = document.createElement('label');
+        row.className = 'nb-item-field-row' + (required && !value ? ' nb-item-field-missing' : '');
+        const lbl = document.createElement('span');
+        lbl.className = 'nb-item-field-label';
+        lbl.textContent = key + (required ? ' *' : '');
+        row.appendChild(lbl);
+        row.appendChild(fu.widget(key, value, widget));
+        body.appendChild(row);
+    }
+
+    el.querySelector('#nb-item-fields-cancel').addEventListener('click', () => el.remove());
+    el.addEventListener('click', e => { if (e.target === el) el.remove(); });
+
+    el.querySelector('#nb-item-fields-save').addEventListener('click', async () => {
+        const saveBtn = el.querySelector('#nb-item-fields-save');
+        const updates = {};
+        for (const w of body.querySelectorAll('[data-fm-key]')) {
+            updates[w.dataset.fmKey] = w.type === 'checkbox' ? String(w.checked) : w.value;
+        }
+        saveBtn.disabled = true; saveBtn.textContent = '…';
+        try {
+            const r = await fetch('/api/note', {
+                method:  'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ selector: note.selector, content: fu.patch(raw, updates) }),
+            }).then(r => r.json());
+            if (r.error) throw new Error(r.error);
+            el.remove();
+            NbMain.openNote(note.selector);
+        } catch (e) {
+            saveBtn.textContent = `⚠ ${e.message}`;
+            saveBtn.disabled = false;
+        }
+    });
 }
 
 })();

@@ -1,0 +1,8 @@
+{
+  "name": "nbweb-hledger-tools",
+  "private": true,
+  "description": "Dev-only verification scripts for this plugin -- not part of the shipped plugin.",
+  "devDependencies": {
+    "jsdom": "^26.0.0"
+  }
+}
