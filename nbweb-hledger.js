@@ -442,8 +442,65 @@ function _serviceAccounts(opts, province) {
 
 // ── Sales pack — Resale Shop ──────────────────────────────────────────────────
 
+// Seed facts for known marketplace platforms. Kept as a small hand-maintained
+// table (not fetched live) so the wizard has no runtime dependency on a
+// specific reference notebook existing — see claude:nbweb-hledger_plugin_design.md
+// "Platforms are data, not hardcoded accounts". The human-readable version of
+// the same facts, with prose and sourcing, lives in acct_ref:platforms/ — keep
+// the two in sync by hand when a platform's policy is re-verified.
+const _SALES_KNOWN_PLATFORMS = {
+    etsy: {
+        label: 'Etsy', account: 'Etsy', platform_category: 'marketplace',
+        gst_hst: 'collects-all', cra_seller_info_return: true,
+        clearing_account: 'Assets:Payment:Stripe', typical_lag_days: 2,
+        last_verified: '2026-07-14',
+        source_url: 'https://www.etsy.com/legal/taxes/canada/',
+        note: 'Etsy has collected and remitted GST/HST on Canadian marketplace orders since ' +
+              'July 1, 2022, on all Canadian orders regardless of the seller’s own registration ' +
+              'status. Verify current policy at source_url before relying on this for a real filing.',
+    },
+    ebay: {
+        label: 'eBay', account: 'eBay', platform_category: 'marketplace',
+        gst_hst: 'collects-nonregistrant-only', cra_seller_info_return: true,
+        clearing_account: 'Assets:Payment:Stripe', typical_lag_days: 2,
+        last_verified: '2026-07-14',
+        source_url: 'https://www.ebay.ca/help/selling/fees-credits-invoices/taxes-import-charges-sellers?id=4805',
+        note: 'Lower confidence than the Etsy seed — eBay’s obligation is generally tied to the ' +
+              'seller’s own registration status rather than a blanket policy. Could not confirm ' +
+              'eBay’s current seller-facing behaviour directly; verify in eBay’s own seller tax ' +
+              'settings before trusting this for a registered seller’s real postings.',
+    },
+    facebook_marketplace: {
+        label: 'Facebook Marketplace', account: 'FacebookMarketplace', platform_category: 'unverified',
+        gst_hst: 'unverified', cra_seller_info_return: true,
+        clearing_account: '', typical_lag_days: null,
+        last_verified: '2026-07-14', source_url: '',
+        note: 'Weakest-sourced of the three seeds — no research done on Meta’s GST/HST collection ' +
+              'policy. Also structurally different: a lot of Marketplace activity never routes payment ' +
+              'through the platform at all (local pickup, cash/e-transfer arranged off-platform), in ' +
+              'which case it behaves like an ordinary in-person self-collected sale, not a marketplace one.',
+    },
+};
+
+// Every selected platform/channel that should get its own Income:Sales:<X> +
+// Expenses:Platform:<X> pair — known seeded platforms (checkbox) plus one
+// free-text "other" platform. In-person and wholesale are handled separately
+// (below) since they're not marketplaces and carry no platform policy.
+function _salesPlatformSelections(opts) {
+    const selected = [];
+    for (const [id, seed] of Object.entries(_SALES_KNOWN_PLATFORMS)) {
+        if (opts[id]) selected.push({ id, known: true, ...seed });
+    }
+    const otherName = String(opts.other_platform_name || '').trim();
+    if (otherName)
+        selected.push({ id: 'other_platform', known: false, label: otherName,
+                         account: otherName.replace(/[^\w]+/g, '') });
+    return selected;
+}
+
 function _salesAccounts(opts, province) {
-    const prov = _PROVINCES[province] || _PROVINCES.BC;
+    const prov      = _PROVINCES[province] || _PROVINCES.BC;
+    const platforms = _salesPlatformSelections(opts);
     const a = [];
 
     // Assets
@@ -454,7 +511,7 @@ function _salesAccounts(opts, province) {
         a.push({ account: 'Assets:Bank:Business:Savings', type: 'asset' });
     a.push({ account: 'Assets:Inventory', type: 'asset',
              desc: 'Sum of cost bases of all unsold items — reduced by COGS on each sale' });
-    if (opts.online_sales)
+    if (platforms.length)
         a.push({ account: 'Assets:Payment:Stripe', type: 'asset',
                  desc: 'Clearing account — balance should reach zero on each payout (~2 days)' });
     if (opts.paypal)
@@ -469,7 +526,10 @@ function _salesAccounts(opts, province) {
     else if (prov.regime === 'gst_pst') {
         a.push({ account: 'Assets:GST:InputTaxCredits', type: 'asset', desc: 'GST ITCs — 5% federal' });
         a.push({ account: 'Assets:PST:Paid', type: 'asset',
-                 desc: `PST paid on inventory purchases — ${prov.pst}%. NOT recoverable` });
+                 desc: `PST — ${prov.pst}% — on equipment/supplies/other non-resale expenses; ` +
+                       `genuinely non-recoverable, gets expensed. NOT the same as PST on inventory ` +
+                       `bought for resale, which is normally exempt at source via a resale ` +
+                       `certificate/PST vendor permit and shouldn't be paid in the first place.` });
     } else if (prov.regime === 'gst_qst') {
         a.push({ account: 'Assets:GST:InputTaxCredits', type: 'asset', desc: 'GST ITCs — 5%' });
         a.push({ account: 'Assets:QST:InputTaxCredits', type: 'asset', desc: 'QST ITCs — 9.975%' });
@@ -481,7 +541,10 @@ function _salesAccounts(opts, province) {
     a.push({ account: 'Liabilities', type: 'liability' });
     if (opts.consignment)
         a.push({ account: 'Liabilities:AccountsPayable', type: 'liability',
-                 desc: 'Consignment payouts owing to item owners' });
+                 desc: 'Consignment payouts owing to item owners. Tracks the payout only — the ' +
+                       'item-ledger acquired/sold automation below assumes owned inventory, so who ' +
+                       'owes GST/HST on a consigned sale (shop vs. original owner) needs working out ' +
+                       'by hand; see CRA\'s Consigned Goods guidance.' });
     if (opts.credit_card)
         a.push({ account: 'Liabilities:CreditCard:Business', type: 'liability' });
     if (opts.gift_cards)
@@ -515,15 +578,33 @@ function _salesAccounts(opts, province) {
 
     // Income
     a.push({ account: 'Income', type: 'income' });
-    if (opts.online_sales)
-        a.push({ account: 'Income:Sales:Online', type: 'income', cra_t2125: '8000', cra_label: 'Gross sales' });
+    for (const p of platforms) {
+        const incomeAcct  = `Income:Sales:${p.account}`;
+        const expenseAcct = `Expenses:Platform:${p.account}`;
+        const entry = { account: incomeAcct, type: 'income', cra_t2125: '8000', cra_label: 'Gross sales',
+                         platform_sibling: expenseAcct };
+        if (p.known) {
+            Object.assign(entry, {
+                platform_category: p.platform_category,
+                tax_collection_gst_hst: p.gst_hst,
+                cra_seller_info_return: p.cra_seller_info_return,
+                payout_clearing_account: p.clearing_account,
+                payout_typical_lag_days: p.typical_lag_days,
+                last_verified: p.last_verified,
+                source_url: p.source_url,
+                platform_note: p.note,
+            });
+        }
+        entry.credential_ref = '';   // pointer to an nb-web encrypted note, never a secret itself — fill in by hand
+        a.push(entry);
+    }
     if (opts.in_person)
         a.push({ account: 'Income:Sales:InPerson', type: 'income', cra_t2125: '8000' });
     if (opts.wholesale)
         a.push({ account: 'Income:Sales:Wholesale', type: 'income', cra_t2125: '8000' });
-    if (!opts.online_sales && !opts.in_person && !opts.wholesale)
+    if (!platforms.length && !opts.in_person && !opts.wholesale)
         a.push({ account: 'Income:Sales', type: 'income', cra_t2125: '8000', cra_label: 'Gross sales' });
-    if (opts.online_sales)
+    if (platforms.length)
         a.push({ account: 'Income:Shipping:Recovered', type: 'income',
                  desc: 'Shipping charged to buyer — compare against Expenses:Shipping:Outbound' });
     a.push({ account: 'Income:Reimbursements', type: 'income',
@@ -535,12 +616,15 @@ function _salesAccounts(opts, province) {
 
     // Operating expenses
     a.push({ account: 'Expenses', type: 'expense' });
-    if (opts.online_sales) {
+    if (platforms.length) {
         a.push({ account: 'Expenses:Shipping:Outbound',  type: 'expense', cra_t2125: '8810' });
         a.push({ account: 'Expenses:Shipping:Packaging', type: 'expense', cra_t2125: '8810',
                  desc: 'Boxes, tissue, tape, labels' });
-        a.push({ account: 'Expenses:Platform:Online', type: 'expense', cra_t2125: '8520',
-                 desc: 'Etsy listing + transaction fees, Stripe processing fees' });
+        for (const p of platforms) {
+            a.push({ account: `Expenses:Platform:${p.account}`, type: 'expense', cra_t2125: '8520',
+                     desc: `${p.label} listing + transaction fees`,
+                     platform_sibling: `Income:Sales:${p.account}` });
+        }
     }
     if (opts.paypal)
         a.push({ account: 'Expenses:Platform:PayPal', type: 'expense', cra_t2125: '8520' });
@@ -634,7 +718,11 @@ const _COA_DOMAINS = {
         options: [
             { id: 'savings',        label: 'Business savings account',  default: false },
             { id: 'credit_card',    label: 'Business credit card',      default: false },
-            { id: 'online_sales',   label: 'Online sales (Stripe/Etsy)',default: true  },
+            { id: 'etsy',                 label: 'Etsy',                                        default: true  },
+            { id: 'ebay',                 label: 'eBay',                                        default: false },
+            { id: 'facebook_marketplace', label: 'Facebook Marketplace',                        default: false },
+            { id: 'other_platform_name',  label: 'Other platform:',  type: 'text',
+              placeholder: 'name — blank tax fields, fill in by hand' },
             { id: 'in_person',      label: 'In-person sales (markets)', default: false },
             { id: 'wholesale',      label: 'Wholesale channel',         default: false },
             { id: 'paypal',         label: 'PayPal',                    default: false },
@@ -723,6 +811,14 @@ function _accountContent(acct, allAccounts, notebook) {
         lines.push(`**CRA T2125 line ${acct.cra_t2125}**${label}`);
         lines.push(`<a href="term:xdg-open ${url}">T2125 form</a>`, '');
     }
+    if (acct.platform_sibling && notebook) {
+        const slug = _accountSlug(acct.platform_sibling);
+        lines.push(`[[${notebook}:accounting/accounts/${slug}.md]] — the other side of this same platform.`, '');
+    }
+    if (acct.platform_note) {
+        lines.push(acct.platform_note, '');
+        if (acct.source_url) lines.push(`<a href="term:xdg-open ${acct.source_url}">Source</a>`, '');
+    }
     return lines.join('\n').trimEnd();
 }
 
@@ -734,6 +830,18 @@ function _accountFrontmatter(acct) {
     if (acct.cra_label) fm.push(`cra_label: "${acct.cra_label}"`);
     if (acct.cra_t1)    fm.push(`cra_line_t1: "${acct.cra_t1}"`);
     if (acct.cra_t2125) fm.push(`cra_line_t2125: "${acct.cra_t2125}"`);
+    if (acct.platform_category) fm.push(`platform_category: ${acct.platform_category}`);
+    if (acct.tax_collection_gst_hst) fm.push('tax_collection:', `  gst_hst: ${acct.tax_collection_gst_hst}`);
+    if (acct.cra_seller_info_return !== undefined)
+        fm.push('reporting:', `  cra_seller_info_return: ${acct.cra_seller_info_return}`);
+    if (acct.payout_clearing_account || acct.payout_typical_lag_days != null) {
+        fm.push('payout:');
+        if (acct.payout_clearing_account) fm.push(`  clearing_account: "${acct.payout_clearing_account}"`);
+        if (acct.payout_typical_lag_days != null) fm.push(`  typical_lag_days: ${acct.payout_typical_lag_days}`);
+    }
+    if (acct.credential_ref !== undefined) fm.push(`credential_ref: "${acct.credential_ref}"`);
+    if (acct.last_verified) fm.push(`last_verified: ${acct.last_verified}`);
+    if (acct.source_url)    fm.push(`source_url: "${acct.source_url}"`);
     fm.push('---');
     return fm.join('\n');
 }
@@ -892,6 +1000,9 @@ function _buildCoaWizard(el, notebook, config) {
         optsEl.querySelectorAll('input[type=checkbox]').forEach(cb => {
             opts[cb.dataset.id] = cb.checked;
         });
+        optsEl.querySelectorAll('input[type=text]').forEach(inp => {
+            opts[inp.dataset.id] = inp.value.trim();
+        });
         return opts;
     }
 
@@ -905,8 +1016,14 @@ function _buildCoaWizard(el, notebook, config) {
     function renderOpts() {
         const domain = _COA_DOMAINS[domainSel.value];
         if (!domain) return;
-        optsEl.innerHTML = domain.options.map(opt =>
-            `<label style="display:flex;gap:6px;align-items:center;cursor:pointer;padding:2px 0">
+        optsEl.innerHTML = domain.options.map(opt => opt.type === 'text'
+            ? `<label style="display:flex;gap:6px;align-items:center;padding:2px 0">
+                <span>${_esc(opt.label)}</span>
+                <input type="text" data-id="${opt.id}" placeholder="${_esc(opt.placeholder || '')}"
+                       style="flex:1;font-size:12px;background:var(--bg-alt,#1a1a1a);color:inherit;
+                              border:1px solid var(--border,#333);border-radius:3px;padding:2px 6px">
+               </label>`
+            : `<label style="display:flex;gap:6px;align-items:center;cursor:pointer;padding:2px 0">
                 <input type="checkbox" data-id="${opt.id}"${opt.default ? ' checked' : ''}>
                 <span>${_esc(opt.label)}</span>
             </label>`
