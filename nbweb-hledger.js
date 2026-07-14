@@ -1402,6 +1402,7 @@ if (window.NbSpecialty) {
                 ${note.meta?.status !== 'sold' ? '<button class="nb-specialty-action" data-action="mark-sold" title="Mark as sold">✅ Sold</button>' : ''}
                 <button class="nb-specialty-action" data-action="item-summary" title="Cost / margin summary">📊 Summary</button>
                 <button class="nb-specialty-action" data-action="item-fields" title="Fill in item fields (required + optional)">📝 Fields</button>
+                <button class="nb-specialty-action" data-action="item-new" title="Add new item(s) from image(s)">🆕 New</button>
                </div>`;
         }
         return '';
@@ -1425,6 +1426,7 @@ document.addEventListener('click', e => {
     if (action === 'mark-sold')     _itemMarkSold(note);
     if (action === 'item-summary')  _itemSummary(note);
     if (action === 'item-fields')   _itemFieldsModal(note);
+    if (action === 'item-new')      _itemNewPicker(note);
 });
 
 async function _reportsGenQuote(note, scope = 'future') {
@@ -1799,6 +1801,59 @@ function _itemSummary(note) {
         if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener('click', dismiss, true); }
     };
     setTimeout(() => document.addEventListener('click', dismiss, true), 0);
+}
+
+// "+ New" — the nb-web-native round trip of the existing nb-new-item desktop
+// script (Caja right-click "Add New Item"). Real browser file picker
+// (multi-select) rather than a desktop zenity dialog, since we're starting
+// from inside nb-web already -- the notebook is already known from `note`,
+// so unlike the desktop script there's no notebook-picker step needed.
+// Doesn't navigate away from the item you're currently viewing -- refreshes
+// the list in the background and reports status on the button itself, quiet
+// on full success (same "silent unless something needs attention" spirit as
+// the checks system).
+function _itemNewPicker(note) {
+    if (!note?.notebook) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = 'image/*';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+
+    input.addEventListener('change', async () => {
+        const files = [...input.files];
+        input.remove();
+        if (!files.length) return;
+
+        const btn = document.querySelector('.nb-specialty-action[data-action="item-new"]');
+        if (btn) { btn.disabled = true; btn.textContent = '…'; }
+
+        const form = new FormData();
+        form.append('notebook', note.notebook);
+        for (const f of files) form.append('files', f);
+
+        try {
+            const d = await fetch('/api/item/new', { method: 'POST', body: form }).then(r => r.json());
+            const results = d.results ?? [];
+            const ok     = results.filter(r => r.ok);
+            const failed = results.filter(r => !r.ok);
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = failed.length ? `⚠ ${ok.length}/${results.length}` : '🆕 New';
+            }
+            if (failed.length) {
+                alert(`${ok.length} item(s) created, ${failed.length} failed:\n` +
+                      failed.map(f => `${f.file}: ${f.error}`).join('\n'));
+            }
+            if (typeof NbWeb !== 'undefined') NbWeb.refreshList?.();
+        } catch (e) {
+            if (btn) { btn.disabled = false; btn.textContent = '🆕 New'; }
+            alert(`New item failed: ${e.message}`);
+        }
+    }, { once: true });
+
+    input.click();
 }
 
 // Item fields modal — the third of three ways to fill in an item's fields
