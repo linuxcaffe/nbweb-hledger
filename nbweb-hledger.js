@@ -995,6 +995,17 @@ function _buildCoaWizard(el, notebook, config) {
     const resultEl     = el.querySelector('#nb-hl-coa-result');
     let _lastAccounts  = [];
 
+    // Remember the wizard's domain + checkbox/text state per notebook (same
+    // pattern as _bkPanelMode's localStorage use above) so reopening Setup in
+    // the same notebook restores what was there before, instead of always
+    // resetting to each option's hardcoded default.
+    const _domainKey   = () => `nb-hl-coa-domain:${notebook}`;
+    const _optsKey      = domainId => `nb-hl-coa-opts:${notebook}:${domainId}`;
+    const _loadSavedOpts = domainId => {
+        try { return JSON.parse(localStorage.getItem(_optsKey(domainId)) || '{}'); }
+        catch (_) { return {}; }
+    };
+
     function getOpts() {
         const opts = {};
         optsEl.querySelectorAll('input[type=checkbox]').forEach(cb => {
@@ -1004,6 +1015,11 @@ function _buildCoaWizard(el, notebook, config) {
             opts[inp.dataset.id] = inp.value.trim();
         });
         return opts;
+    }
+
+    function saveOpts() {
+        try { localStorage.setItem(_optsKey(domainSel.value), JSON.stringify(getOpts())); }
+        catch (_) {}
     }
 
     function buildAccounts() {
@@ -1016,21 +1032,34 @@ function _buildCoaWizard(el, notebook, config) {
     function renderOpts() {
         const domain = _COA_DOMAINS[domainSel.value];
         if (!domain) return;
+        const saved = _loadSavedOpts(domainSel.value);
         optsEl.innerHTML = domain.options.map(opt => opt.type === 'text'
             ? `<label style="display:flex;gap:6px;align-items:center;padding:2px 0">
                 <span>${_esc(opt.label)}</span>
                 <input type="text" data-id="${opt.id}" placeholder="${_esc(opt.placeholder || '')}"
+                       value="${_esc(saved[opt.id] ?? '')}"
                        style="flex:1;font-size:12px;background:var(--bg-alt,#1a1a1a);color:inherit;
                               border:1px solid var(--border,#333);border-radius:3px;padding:2px 6px">
                </label>`
             : `<label style="display:flex;gap:6px;align-items:center;cursor:pointer;padding:2px 0">
-                <input type="checkbox" data-id="${opt.id}"${opt.default ? ' checked' : ''}>
+                <input type="checkbox" data-id="${opt.id}"${(saved[opt.id] ?? opt.default) ? ' checked' : ''}>
                 <span>${_esc(opt.label)}</span>
             </label>`
         ).join('');
     }
 
-    domainSel.addEventListener('change', () => { renderOpts(); previewText.style.display = 'none'; resultEl.style.display = 'none'; });
+    optsEl.addEventListener('change', saveOpts);
+    optsEl.addEventListener('input',  saveOpts);
+
+    // Restore the last-used domain for this notebook, if any.
+    const savedDomain = localStorage.getItem(_domainKey());
+    if (savedDomain && _COA_DOMAINS[savedDomain]) domainSel.value = savedDomain;
+
+    domainSel.addEventListener('change', () => {
+        try { localStorage.setItem(_domainKey(), domainSel.value); } catch (_) {}
+        renderOpts();
+        previewText.style.display = 'none'; resultEl.style.display = 'none';
+    });
     renderOpts();
 
     previewBtn.addEventListener('click', () => {
