@@ -28,6 +28,13 @@ The closest thing in the professional world is a bespoke time-billing system tha
 - **journals/ auto-sync** — timedot blocks → labour journal; CSV blocks → materials journal; no scripts
 - **Specialty note types** — `project`, `reports`, `budget`, `invoice`, `tools`, `materials`, `transport`
 
+### Sales pack (resale shop)
+- **Named platform accounts** — pick your actual channels (Etsy, eBay, Facebook Marketplace seeded with their own tax-collection defaults; any other platform by name), not a fixed Online/InPerson/Wholesale split
+- **Item cost/margin tracking** — cost and sale price live only in each item's annotation sidecar (`​```ledger​```` blocks), never the published note — structurally invisible to a Quartz site build, not just conventionally private
+- **Item specialty actions** — ✅ Sold (status flip), 📊 Summary (cost/margin at a glance), 📝 Fields (fill in any schema field, required or optional, even ones an item doesn't have yet)
+- **`gen-items-journal.py`** pattern — a `.tools/` script compiling item annotation ledger blocks into the real journal, one notebook (public items) reading into another (private books)
+- Full design: `claude:nbweb-hledger_plugin_design.md`'s "Sales pack CoA" section; item workflow detail in `docs:dev/plugins/hledger/CLAUDE.md`
+
 ---
 
 ## Installation
@@ -265,6 +272,7 @@ expenses thisyear depth:3
 | `tools` | 🔧 | Tool inventory catalog |
 | `materials` | 🧱 | Materials price catalog |
 | `transport` | 🚗 | Vehicle and mileage tracking |
+| `item` | 🏷️ | Resale-shop item listing (Sales pack); Sold/Summary/Fields buttons — type registered by `nbweb-quartz`, actions here |
 
 ---
 
