@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * test-item-new-picker.js — DOM-level verification of _itemNewPicker
- * (the item specialty header's "🆕 New" button, in nbweb-hledger.js).
+ * test-item-new-picker.js — DOM-level verification of _itemNewPicker /
+ * _itemNewModal (the item specialty header's "🆕 New" button, in
+ * nbweb-hledger.js).
  *
  * Same middle-ground approach as test-item-fields-modal.js (jsdom, not
  * pytest/Playwright) -- loads the actual plugin source and drives it
- * against a real file-input change event.
+ * against a real file-input change event and modal form submission.
  *
  * jsdom doesn't implement DataTransfer, so file selection is simulated by
  * directly assigning input.files to a plain array of real File objects
@@ -16,12 +17,15 @@
  *
  * Verifies:
  *   - a hidden multi-select, image-accept file input is created and clicked
- *   - selecting files POSTs a FormData with `notebook` + one `files` entry
- *     per selected file to /api/item/new
- *   - the input element is removed from the DOM after selection (no litter)
- *   - on success, the button resets (not left disabled/spinning) and
- *     NbWeb.refreshList() is called so new items show up without navigating
- *     away from the item you were on when you clicked New
+ *   - selecting files opens a confirm modal (not an immediate upload) listing
+ *     one row per file, first flagged "primary"
+ *   - Create is a no-op until both code and title are filled in
+ *   - submitting POSTs a FormData with notebook/code/title + one `files`
+ *     entry per selected file to /api/item/new -- ONE item, not one per file
+ *   - on success: the modal closes, NbWeb.refreshList() runs, the new note
+ *     is opened (NbMain.openNote), and the Fields modal auto-opens on it
+ *     (chaining into the existing constraints-driven fields flow so a bare
+ *     new item doesn't dead-end silently)
  *
  * Usage:
  *   npm install          (jsdom, once -- shared with test-item-fields-modal.js)
@@ -35,7 +39,9 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 
-const HLEDGER_JS = path.resolve(__dirname, '../nbweb-hledger.js');
+const NB_WEB_DIR    = path.resolve(__dirname, '../../nb-web');
+const HLEDGER_JS     = path.resolve(__dirname, '../nbweb-hledger.js');
+const CODEBLOCKS_JS  = path.join(NB_WEB_DIR, 'plugins/nbweb-codeblocks.js');
 
 function loadPluginIIFE(filePath) {
     const src = fs.readFileSync(filePath, 'utf8');
@@ -52,7 +58,11 @@ async function main() {
     let refreshCalled = false;
     global.NbWeb = { registerModule: () => {}, refreshList: () => { refreshCalled = true; } };
     global.NbSpecialty = null;
-    global.NbMain = { openNote: () => {} };
+    let openedSelector = null;
+    global.NbMain = { openNote: sel => { openedSelector = sel; } };
+
+    eval(loadPluginIIFE(CODEBLOCKS_JS));
+    global.NbWeb.fmUtils = { parseFields: _fmParseFields, patch: _fmPatch, widget: _fmWidget };
 
     eval(loadPluginIIFE(HLEDGER_JS));
 
@@ -60,18 +70,6 @@ async function main() {
         '<div class="nb-specialty-actions"><button class="nb-specialty-action" data-action="item-new">🆕 New</button></div>';
 
     const note = { notebook: 'preciousfinds.ca', selector: 'preciousfinds.ca:items/whatever.md' };
-
-    let capturedForm = null;
-    global.fetch = (url, opts) => {
-        capturedForm = opts.body;
-        return Promise.resolve({ json: () => ({
-            success: true,
-            results: [
-                { file: 'a.jpg', ok: true, item: 'a', selector: 'preciousfinds.ca:items/a.md' },
-                { file: 'b.jpg', ok: true, item: 'b', selector: 'preciousfinds.ca:items/b.md' },
-            ],
-        }) });
-    };
 
     _itemNewPicker(note);
 
@@ -91,16 +89,67 @@ async function main() {
     await new Promise(r => setTimeout(r, 10));
 
     assert.ok(!document.body.contains(input), 'file input should be removed from the DOM after selection');
-    assert.ok(capturedForm, 'no fetch was made');
+
+    const modal = document.getElementById('nb-item-new-modal');
+    assert.ok(modal, 'confirm modal did not render after file selection');
+    const fileRows = modal.querySelectorAll('.nb-item-new-file');
+    assert.strictEqual(fileRows.length, 2, 'expected one row per selected file');
+    assert.match(fileRows[0].textContent, /primary/, 'first file should be flagged primary');
+    assert.match(fileRows[0].textContent, /a\.jpg/);
+    assert.match(fileRows[1].textContent, /b\.jpg/);
+
+    const codeInput  = modal.querySelector('#nb-item-new-code');
+    const titleInput = modal.querySelector('#nb-item-new-title');
+    const createBtn  = modal.querySelector('#nb-item-new-create');
+    assert.ok(codeInput && titleInput && createBtn, 'code/title inputs or Create button missing');
+
+    // Create with both fields blank must be a no-op (no fetch, modal stays open)
+    let fetchCalled = false;
+    global.fetch = () => { fetchCalled = true; return Promise.resolve({ json: () => ({}) }); };
+    createBtn.click();
+    await new Promise(r => setTimeout(r, 0));
+    assert.strictEqual(fetchCalled, false, 'Create with blank code/title must not upload anything');
+    assert.ok(document.getElementById('nb-item-new-modal'), 'modal should stay open when required fields are blank');
+
+    codeInput.value  = 'ABC123';
+    titleInput.value = 'Vintage Widget';
+
+    let capturedForm = null;
+    let capturedUrl  = null;
+    const freshNote = { selector: 'preciousfinds.ca:items/ABC123.md', raw: '---\ntitle: Vintage Widget\n---\n', meta: { title: 'Vintage Widget' } };
+    const constraintsFixture = { title: { widget: 'text', required: true } };
+    global.fetch = (url, opts) => {
+        if (url === '/api/item/new') {
+            capturedForm = opts.body;
+            return Promise.resolve({ json: () => ({
+                success: true, item: 'ABC123',
+                selector: 'preciousfinds.ca:items/ABC123.md',
+                images: ['ABC123.jpg', 'ABC123-1.jpg'], failures: [],
+            }) });
+        }
+        if (url.startsWith('/api/note/constraints-full')) {
+            return Promise.resolve({ json: () => constraintsFixture });
+        }
+        // /api/note?selector=... refetch that feeds the auto-opened Fields modal
+        capturedUrl = url;
+        return Promise.resolve({ json: () => freshNote });
+    };
+    createBtn.click();
+    await new Promise(r => setTimeout(r, 10));
+
+    assert.ok(capturedForm, 'no fetch was made to /api/item/new');
     assert.strictEqual(capturedForm.get('notebook'), 'preciousfinds.ca', 'notebook not sent correctly');
-    assert.strictEqual(capturedForm.getAll('files').length, 2, 'expected 2 files in the FormData');
+    assert.strictEqual(capturedForm.get('code'), 'ABC123');
+    assert.strictEqual(capturedForm.get('title'), 'Vintage Widget');
+    assert.strictEqual(capturedForm.getAll('files').length, 2, 'expected 2 files in the FormData (one item, two images)');
 
-    const btn = document.querySelector('[data-action="item-new"]');
-    assert.strictEqual(btn.disabled, false, 'button should not be left disabled after success');
-    assert.strictEqual(btn.textContent, '🆕 New', 'button should reset to its original label on full success');
-    assert.ok(refreshCalled, 'NbWeb.refreshList() should be called so new items appear without navigating away');
+    assert.ok(!document.getElementById('nb-item-new-modal'), 'confirm modal should close on success');
+    assert.ok(refreshCalled, 'NbWeb.refreshList() should be called so the new item appears without navigating away');
+    assert.strictEqual(openedSelector, 'preciousfinds.ca:items/ABC123.md', 'should navigate to the newly created item');
+    assert.ok(capturedUrl && capturedUrl.includes('ABC123.md'), 'should refetch the fresh note for the auto-opened Fields modal');
+    assert.ok(document.getElementById('nb-item-fields-modal'), 'Fields modal should auto-open on the new (bare) item');
 
-    console.log('✓ all assertions passed (multi-select image input, correct FormData, cleanup, quiet success)');
+    console.log('✓ all assertions passed (multi-image single-item picker, blank-field guard, correct FormData, cleanup, navigate + auto-open Fields)');
 }
 
 main().catch(e => { console.error('✗ FAILED:', e.message); process.exit(1); });

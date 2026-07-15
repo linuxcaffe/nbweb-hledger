@@ -1812,6 +1812,10 @@ function _itemSummary(note) {
 // the list in the background and reports status on the button itself, quiet
 // on full success (same "silent unless something needs attention" spirit as
 // the checks system).
+// "+ New" — pick image(s) for one new item, then collect its code (filename/
+// accounting reference) and title (descriptive text) in a small confirm
+// modal before uploading. Multi-select images all belong to the SAME item
+// (first = primary, rest = supplemental) -- it is not a batch of N items.
 function _itemNewPicker(note) {
     if (!note?.notebook) return;
     const input = document.createElement('input');
@@ -1821,39 +1825,83 @@ function _itemNewPicker(note) {
     input.style.display = 'none';
     document.body.appendChild(input);
 
-    input.addEventListener('change', async () => {
+    input.addEventListener('change', () => {
         const files = [...input.files];
         input.remove();
-        if (!files.length) return;
+        if (!files.length) { alert('No files were selected.'); return; }
+        _itemNewModal(note, files);
+    }, { once: true });
 
-        const btn = document.querySelector('.nb-specialty-action[data-action="item-new"]');
-        if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    input.click();
+}
+
+function _itemNewModal(note, files) {
+    document.getElementById('nb-item-new-modal')?.remove();
+
+    const rows = files.map((f, i) =>
+        `<div class="nb-item-new-file">${i === 0 ? 'primary' : `+${i}`} — ${_esc(f.name)}</div>`
+    ).join('');
+
+    const el = document.createElement('div');
+    el.id = 'nb-item-new-modal';
+    el.className = 'nb-invoice-overlay';
+    el.innerHTML = `
+        <div class="nb-invoice-panel">
+            <div class="nb-invoice-hdr">🆕 New Item</div>
+            <div class="nb-invoice-sub">${files.length} image${files.length > 1 ? 's' : ''} selected — the first is the primary image, others are auto-suffixed to it</div>
+            <div class="nb-invoice-fields">
+                <label>Code <input id="nb-item-new-code" placeholder="ABC123 (filename / accounting ref)"></label>
+                <label>Title <input id="nb-item-new-title" placeholder="Vintage Pyrex Butterfly Gold Dish"></label>
+            </div>
+            <div class="nb-item-new-filelist">${rows}</div>
+            <div class="nb-invoice-btns">
+                <button id="nb-item-new-cancel">Cancel</button>
+                <button id="nb-item-new-create" class="nb-inv-primary">Create</button>
+            </div>
+        </div>`;
+    document.body.appendChild(el);
+
+    const codeInput  = el.querySelector('#nb-item-new-code');
+    const titleInput = el.querySelector('#nb-item-new-title');
+    codeInput.focus();
+
+    el.querySelector('#nb-item-new-cancel').addEventListener('click', () => el.remove());
+    el.addEventListener('click', e => { if (e.target === el) el.remove(); });
+
+    el.querySelector('#nb-item-new-create').addEventListener('click', async () => {
+        const code  = codeInput.value.trim();
+        const title = titleInput.value.trim();
+        if (!code)  { codeInput.focus();  return; }
+        if (!title) { titleInput.focus(); return; }
+
+        const btn = el.querySelector('#nb-item-new-create');
+        btn.disabled = true; btn.textContent = '…';
 
         const form = new FormData();
         form.append('notebook', note.notebook);
+        form.append('code', code);
+        form.append('title', title);
         for (const f of files) form.append('files', f);
 
         try {
             const d = await fetch('/api/item/new', { method: 'POST', body: form }).then(r => r.json());
-            const results = d.results ?? [];
-            const ok     = results.filter(r => r.ok);
-            const failed = results.filter(r => !r.ok);
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = failed.length ? `⚠ ${ok.length}/${results.length}` : '🆕 New';
-            }
-            if (failed.length) {
-                alert(`${ok.length} item(s) created, ${failed.length} failed:\n` +
-                      failed.map(f => `${f.file}: ${f.error}`).join('\n'));
-            }
+            if (!d.success) throw new Error(d.error || 'creation failed');
+            el.remove();
             if (typeof NbWeb !== 'undefined') NbWeb.refreshList?.();
+            if (d.failures?.length) {
+                alert(`Item created, but ${d.failures.length} image(s) failed:\n` +
+                      d.failures.map(f => `${f.file}: ${f.error}`).join('\n'));
+            }
+            if (d.selector) {
+                if (typeof NbMain !== 'undefined') NbMain.openNote?.(d.selector);
+                const freshNote = await fetch(`/api/note?selector=${encodeURIComponent(d.selector)}`).then(r => r.json());
+                if (!freshNote.error) _itemFieldsModal(freshNote);
+            }
         } catch (e) {
-            if (btn) { btn.disabled = false; btn.textContent = '🆕 New'; }
+            btn.disabled = false; btn.textContent = 'Create';
             alert(`New item failed: ${e.message}`);
         }
-    }, { once: true });
-
-    input.click();
+    });
 }
 
 // Item fields modal — the third of three ways to fill in an item's fields
