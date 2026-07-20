@@ -100,6 +100,7 @@ The diary note is the source of truth. It accumulates dated sections with timedo
 type: project
 project: gbct:nathan
 rate: 30
+rate_unit: hour           # or day
 billing_type: cash        # or t&m
 client: "contacts:gbct.md"
 timedot_file: /abs/path/to/journals/nathan.timedot
@@ -141,6 +142,8 @@ Every file in `journals/` is kept current by nb-web — no cron jobs or gen scri
 
 **Why a separate labour journal?** hledger's timedot virtual postings are unitless — `-X CAD` can't convert them via `P` directives. The labour journal writes explicit `CAD` amounts (`hours × rate`), so `bal Income` and `reg` work natively without commodity conversion.
 
+**Rate changes mid-project:** drop a bare-number `> RATE: 35` marker into the diary at the point the new rate takes effect — no `$`, no unit (that's fixed by `rate_unit:` above). Everything after the marker bills at the new rate; invoices spanning the change split into separate line items automatically. Full detail: `docs:plugins/hledger/INVOICING.md`'s "Changing your rate mid-project".
+
 **Account convention:** `Assets:AR:gbct:nathan` — short `AR:` form throughout.
 
 **hledger cache:** cleared on every journal write, since master journal mtime doesn't change when sub-journals change.
@@ -153,12 +156,13 @@ type: reports
 project: gbct:nathan
 journal: /abs/path/to/journals/nathan.journal
 billing_type: cash
-rate: 30
 client: "contacts:gbct.md"
 ---
 ```
 
-Specialty header shows live budget totals and **Quote** / **Invoice** action buttons.
+No `rate:` here — every rate-aware block resolves it from the project note, never
+a copy on the reports note. Specialty header shows live budget totals and
+**Quote** / **Invoice** action buttons.
 
 ### Invoice generation
 

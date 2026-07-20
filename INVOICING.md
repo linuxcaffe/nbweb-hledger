@@ -67,6 +67,7 @@ title: "Acme — Painting"
 type: project
 project: acme:painting
 rate: 45
+rate_unit: hour
 billing_type: cash
 client: "contacts:acme.md"
 timedot_file: /home/YOU/.nb/djp/projects/acme/painting/journals/painting.timedot
@@ -81,7 +82,8 @@ foldable: '\d{4}-\d{2}-\d{2}'
 | Key | Purpose |
 |-----|---------|
 | `project:` | `client:project` — used as account prefix in journals |
-| `rate:` | Hourly rate in CAD — enables labour journal auto-gen |
+| `rate:` | Rate in CAD — enables labour journal auto-gen. Lives **only** here, never duplicated on the reports note — see "Changing your rate mid-project" below |
+| `rate_unit:` | `hour` (default) or `day` — what the bare number in `rate:` and any `> RATE:` marker means |
 | `billing_type:` | `cash` or `t&m` (time & materials with HST) |
 | `client:` | `contacts:filename.md` — drives the To: block on the invoice |
 | `timedot_file:` | Absolute path — where timedot sync writes |
@@ -115,6 +117,34 @@ Every time you save a timedot block, nb-web automatically rebuilds:
 
 No scripts, no cron jobs.
 
+### Changing your rate mid-project
+
+If your rate changes partway through — an annual increase, a renegotiation — drop
+a marker line into the diary at the point it takes effect:
+
+```markdown
+## 2026-07-10
+
+```timedot
+2026-07-10
+ acme:painting:paint  4  ; second coat
+```
+
+> RATE: 50
+```
+
+Bare number only — no `$`, no `/hr`. The unit is already fixed by the project
+note's own `rate_unit:`, so it doesn't need repeating on every marker. Every
+entry from this point forward (including later that same day, if the marker
+sits between two timedot blocks) bills at the new rate; everything before it
+keeps the old one. Invoices spanning the change automatically split into
+separate line items with a "rate change to $X" row between them — the same
+thing you'd otherwise have to edit in by hand.
+
+A `> RATE:` marker placed before the diary's first dated entry overrides the
+project note's `rate:` outright, rather than the frontmatter value ever taking
+effect.
+
 ---
 
 ## 6. Set up the reports note
@@ -126,12 +156,15 @@ Create `painting-reports.md` with `type: reports`:
 title: "Acme Painting — Reports"
 type: reports
 project: acme:painting
-rate: 45
 billing_type: cash
 client: "contacts:acme.md"
 journal: /home/YOU/.nb/djp/projects/acme/painting/journals/painting.journal
 ---
 ```
+
+**No `rate:` here** — every rate-aware block (Time, Current phase — Labour,
+Invoice/Quote) resolves rate from the *project* note, not this one. A copy on
+the reports note is never read and only invites drift between the two.
 
 This note is where you'll generate invoices from. Add `hl` codeblocks here for
 live budget views if you want them.
