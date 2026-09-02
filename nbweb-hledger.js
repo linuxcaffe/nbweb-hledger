@@ -1412,6 +1412,24 @@ if (window.NbSpecialty) {
 // Expose accounts getter so NbWeb-codeblocks can wire autocomplete
 window.NbHledger = { getAccounts: _getAccounts };
 
+// Maps the Timeline codeblock's own timeframe vocabulary (current/future/
+// all, or a specific "TYPE: ref" cumulative-scope label -- see
+// _timelineScope's last branch in nbweb-codeblocks.js) onto quote/
+// invoice's scope vocabulary. Same mapping _timelineMoneyScope() already
+// uses for the timeline's own $ toggle; duplicated here (3 lines) rather
+// than cross-module-exposed. Reads the timeline block's *live* DOM state
+// directly -- every reports page has exactly one, and it always carries a
+// real dataset.activeTimeframe once rendered (defaults to 'current') --
+// so Quote/Invoice open already reflecting whatever the user was just
+// looking at, instead of a fixed, disconnected default.
+function _currentTimelineScope() {
+    const tl = document.querySelector('.nb-timeline-block');
+    const tf = tl?.dataset.activeTimeframe || 'current';
+    if (tf === 'current') return 'since_invoice';
+    if (tf === 'future' || tf === 'all') return tf;
+    return 'all';
+}
+
 // Delegated click handler for specialty action buttons
 document.addEventListener('click', e => {
     const btn = e.target.closest('.nb-specialty-action');
@@ -1419,7 +1437,7 @@ document.addEventListener('click', e => {
     e.preventDefault();
     const action = btn.dataset.action;
     const note   = NbMain.activeNote();
-    if (action === 'quote')         _reportsGenQuote(note);
+    if (action === 'quote')         _reportsGenQuote(note, _currentTimelineScope());
     if (action === 'invoice')       _reportsGenInvoice(note);
     if (action === 'mark-paid')     _invoiceMarkPaid(note);
     if (action === 'print-invoice') _invoicePrint(note);
@@ -1483,6 +1501,7 @@ function _showQuoteDialog(note, d) {
             <label>Scope
                 <select id="nb-quo-scope">
                     <option value="future" ${d.scope === 'future' ? 'selected' : ''}>Remaining work (from tomorrow on)</option>
+                    <option value="since_invoice" ${d.scope === 'since_invoice' ? 'selected' : ''}>Since last invoice</option>
                     <option value="all" ${d.scope === 'all' ? 'selected' : ''}>Whole job (start to finish)</option>
                 </select>
             </label>
@@ -1583,6 +1602,14 @@ function _showInvoiceDialog(note, d) {
     const matRow = hasMat
         ? `<tr><td>Materials</td><td>cost + HST</td><td>${fmt(matGross)}</td></tr>`
         : '';
+    // Invoice is a real, one-way billing action -- always scoped to "since
+    // the last invoice", never reframed by whatever the Timeline codeblock
+    // happens to be showing (see _currentTimelineScope, used only for
+    // Quote). Label it explicitly so the scope about to become a permanent
+    // ledger entry is never ambiguous.
+    const sinceLabel = d.since_date
+        ? `Billing: everything since your last invoice (${_esc(d.since_date)})`
+        : `Billing: everything since project start — no invoice yet`;
 
     const el = document.createElement('div');
     el.id = 'nb-invoice-dialog';
@@ -1591,6 +1618,7 @@ function _showInvoiceDialog(note, d) {
         <div class="nb-invoice-panel">
             <div class="nb-invoice-hdr">🧾 Generate Invoice</div>
             <div class="nb-invoice-sub">${_esc(d.project)} · ${_esc(d.client)} · <em>${_esc(d.billing_type)}</em></div>
+            <div class="nb-invoice-sub">${sinceLabel}</div>
             <table class="nb-invoice-tbl">
                 <thead><tr><th>Item</th><th>Detail</th><th>Amount</th></tr></thead>
                 <tbody>${labourRow}${matRow}</tbody>
