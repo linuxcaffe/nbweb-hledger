@@ -1415,19 +1415,22 @@ window.NbHledger = { getAccounts: _getAccounts };
 // Maps the Timeline codeblock's own timeframe vocabulary (current/future/
 // all, or a specific "TYPE: ref" cumulative-scope label -- see
 // _timelineScope's last branch in nbweb-codeblocks.js) onto quote/
-// invoice's scope vocabulary. Same mapping _timelineMoneyScope() already
-// uses for the timeline's own $ toggle; duplicated here (3 lines) rather
-// than cross-module-exposed. Reads the timeline block's *live* DOM state
-// directly -- every reports page has exactly one, and it always carries a
-// real dataset.activeTimeframe once rendered (defaults to 'current') --
-// so Quote/Invoice open already reflecting whatever the user was just
+// invoice's scope vocabulary. Returns {scope, markerRef} -- a specific
+// marker label maps to until_marker (achievement-style: "up to and
+// including this milestone"), with markerRef carrying the exact "TYPE:
+// ref" string _marker_groups expects as its own `boundary` param (no new
+// identifier scheme invented; same string the dropdown's option value
+// already is). Reads the timeline block's *live* DOM state directly --
+// every reports page has exactly one, and it always carries a real
+// dataset.activeTimeframe once rendered (defaults to 'current') -- so
+// Quote/Invoice open already reflecting whatever the user was just
 // looking at, instead of a fixed, disconnected default.
 function _currentTimelineScope() {
     const tl = document.querySelector('.nb-timeline-block');
     const tf = tl?.dataset.activeTimeframe || 'current';
-    if (tf === 'current') return 'since_invoice';
-    if (tf === 'future' || tf === 'all') return tf;
-    return 'all';
+    if (tf === 'current') return { scope: 'since_invoice', markerRef: '' };
+    if (tf === 'future' || tf === 'all') return { scope: tf, markerRef: '' };
+    return { scope: 'until_marker', markerRef: tf };
 }
 
 // Delegated click handler for specialty action buttons
@@ -1438,7 +1441,7 @@ document.addEventListener('click', e => {
     const action = btn.dataset.action;
     const note   = NbMain.activeNote();
     if (action === 'quote')         _reportsGenQuote(note, _currentTimelineScope());
-    if (action === 'invoice')       _reportsGenInvoice(note);
+    if (action === 'invoice')       _reportsGenInvoice(note, _currentTimelineScope());
     if (action === 'mark-paid')     _invoiceMarkPaid(note);
     if (action === 'print-invoice') _invoicePrint(note);
     if (action === 'mark-sold')     _itemMarkSold(note);
@@ -1447,11 +1450,12 @@ document.addEventListener('click', e => {
     if (action === 'item-new')      _itemNewPicker(note);
 });
 
-async function _reportsGenQuote(note, scope = 'future') {
+async function _reportsGenQuote(note, { scope = 'future', markerRef = '' } = {}) {
     const btn = document.querySelector('.nb-specialty-action[data-action="quote"]');
     if (btn) { btn.disabled = true; btn.textContent = '…'; }
     try {
-        const r = await fetch(`/api/t/quote/preflight?selector=${encodeURIComponent(note.selector || '')}&scope=${scope}`);
+        const r = await fetch(`/api/t/quote/preflight?selector=${encodeURIComponent(note.selector || '')}` +
+                               `&scope=${encodeURIComponent(scope)}&marker_ref=${encodeURIComponent(markerRef)}`);
         const data = await r.json();
         if (data.error) throw new Error(data.error);
         _showQuoteDialog(note, data);
@@ -1499,9 +1503,12 @@ function _showQuoteDialog(note, d) {
             <div class="nb-invoice-hdr">📋 Generate Quote — <em>a projection, not a billing event</em></div>
             <div class="nb-invoice-sub">${_esc(d.project)} · ${_esc(d.client)} · <em>${_esc(d.billing_type)}</em></div>
             <label>Scope
-                <select id="nb-quo-scope">
+                <select id="nb-quo-scope" data-marker-ref="${_esc(d.marker_ref || '')}">
                     <option value="future" ${d.scope === 'future' ? 'selected' : ''}>Remaining work (from tomorrow on)</option>
                     <option value="since_invoice" ${d.scope === 'since_invoice' ? 'selected' : ''}>Since last invoice</option>
+                    ${d.scope === 'until_marker' && d.marker_ref
+                        ? `<option value="until_marker" selected>Up to: ${_esc(d.marker_ref)}</option>`
+                        : ''}
                     <option value="all" ${d.scope === 'all' ? 'selected' : ''}>Whole job (start to finish)</option>
                 </select>
             </label>
@@ -1530,15 +1537,21 @@ function _showQuoteDialog(note, d) {
     document.getElementById('nb-quo-cancel').addEventListener('click', () => el.remove());
     el.addEventListener('click', e => { if (e.target === el) el.remove(); });
 
-    // Re-preflight when scope changes, refreshing this same dialog in place
+    // Re-preflight when scope changes, refreshing this same dialog in place.
+    // The dynamic "Up to: X" option is only ever re-selected as itself (its
+    // own markerRef travels with it via data-marker-ref); picking any other
+    // option means the user is deliberately leaving the marker-bounded scope.
     document.getElementById('nb-quo-scope').addEventListener('change', async ev => {
+        const scope = ev.target.value;
+        const markerRef = scope === 'until_marker' ? (ev.target.dataset.markerRef || '') : '';
         el.remove();
-        await _reportsGenQuote(note, ev.target.value);
+        await _reportsGenQuote(note, { scope, markerRef });
     });
 
     document.getElementById('nb-quo-gen').addEventListener('click', async () => {
         const genBtn = document.getElementById('nb-quo-gen');
         genBtn.disabled = true; genBtn.textContent = '…';
+        const scopeSel = document.getElementById('nb-quo-scope');
         try {
             const r = await fetch('/api/t/quote/generate', {
                 method: 'POST',
@@ -1546,7 +1559,8 @@ function _showQuoteDialog(note, d) {
                 body: JSON.stringify({
                     selector:    note.selector,
                     quote_num:   document.getElementById('nb-quo-num').value.trim(),
-                    scope:       document.getElementById('nb-quo-scope').value,
+                    scope:       scopeSel.value,
+                    marker_ref:  scopeSel.value === 'until_marker' ? (scopeSel.dataset.markerRef || '') : '',
                     date:        document.getElementById('nb-quo-date').value,
                     valid_until: document.getElementById('nb-quo-valid').value.trim(),
                     notes:       document.getElementById('nb-quo-notes').value.trim(),
@@ -1563,11 +1577,20 @@ function _showQuoteDialog(note, d) {
     });
 }
 
-async function _reportsGenInvoice(note) {
+async function _reportsGenInvoice(note, { scope: tlScope = 'since_invoice', markerRef: tlMarkerRef = '' } = {}) {
     const btn = document.querySelector('.nb-specialty-action[data-action="invoice"]');
     if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    // Invoice stays pinned to since_invoice for the vague current/future/
+    // all Timeline states (a real, one-way billing action shouldn't
+    // silently inherit an ambient browsing selection) -- but a specific
+    // marker choice (until_marker, the only one the Timeline dropdown
+    // itself can produce -- it only offers a cumulative "up to" view) is
+    // deliberate and unambiguous, so invoice DOES follow that one.
+    const scope     = tlScope === 'until_marker' ? tlScope : 'since_invoice';
+    const markerRef = scope === tlScope ? tlMarkerRef : '';
     try {
-        const r = await fetch(`/api/t/invoice/preflight?selector=${encodeURIComponent(note.selector || '')}`);
+        const r = await fetch(`/api/t/invoice/preflight?selector=${encodeURIComponent(note.selector || '')}` +
+                               `&scope=${encodeURIComponent(scope)}&marker_ref=${encodeURIComponent(markerRef)}`);
         const data = await r.json();
         if (data.error) throw new Error(data.error);
         _showInvoiceDialog(note, data);
@@ -1602,14 +1625,17 @@ function _showInvoiceDialog(note, d) {
     const matRow = hasMat
         ? `<tr><td>Materials</td><td>cost + HST</td><td>${fmt(matGross)}</td></tr>`
         : '';
-    // Invoice is a real, one-way billing action -- always scoped to "since
-    // the last invoice", never reframed by whatever the Timeline codeblock
-    // happens to be showing (see _currentTimelineScope, used only for
-    // Quote). Label it explicitly so the scope about to become a permanent
-    // ledger entry is never ambiguous.
-    const sinceLabel = d.since_date
-        ? `Billing: everything since your last invoice (${_esc(d.since_date)})`
-        : `Billing: everything since project start — no invoice yet`;
+    // Invoice is a real, one-way billing action -- scoped to since_invoice
+    // by default (never silently reframed by a vague current/future/all
+    // Timeline state, see _reportsGenInvoice), OR to a specific
+    // until_marker the caller deliberately chose. Label it explicitly so
+    // the scope about to become a permanent ledger entry is never
+    // ambiguous.
+    const sinceLabel = d.scope === 'until_marker'
+        ? `Billing: everything up to and including ${_esc(d.marker_ref)}`
+        : d.since_date
+            ? `Billing: everything since your last invoice (${_esc(d.since_date)})`
+            : `Billing: everything since project start — no invoice yet`;
 
     const el = document.createElement('div');
     el.id = 'nb-invoice-dialog';
@@ -1653,6 +1679,8 @@ function _showInvoiceDialog(note, d) {
                 body: JSON.stringify({
                     selector:    note.selector,
                     invoice_num: document.getElementById('nb-inv-num').value.trim(),
+                    scope:       d.scope || 'since_invoice',
+                    marker_ref:  d.marker_ref || '',
                     date:        document.getElementById('nb-inv-date').value,
                     due:         document.getElementById('nb-inv-due').value.trim(),
                     notes:       document.getElementById('nb-inv-notes').value.trim(),
