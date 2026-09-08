@@ -238,7 +238,56 @@ nb g "INVOICED"
 
 ---
 
-## 11. Multiple projects, one client
+## 11. Milestone-based billing — grouping by phase
+
+If a project's diary uses `> MILESTONE: <label>` markers, quotes and invoices for it are broken
+into per-milestone sections instead of one flat total.
+
+**Where to put the marker**: same convention as `> INVOICED:` and `> CLOSED:` — drop it in
+*after* the work it names, not before:
+
+```markdown
+## 2026-08-20
+
+```timedot
+acme:painting:trim  4  ; window trim, living room
+```
+
+> MILESTONE: 1. Living room
+```
+
+Everything since the previous `> MILESTONE:` marker (or the start of the diary, for the first
+one) counts toward that milestone — you log the work, then drop the marker to stamp what you
+just finished.
+
+**What changes in the generated document:**
+
+- Labour hours and materials are grouped and subtotaled per milestone, instead of one flat table.
+- Materials appear itemized (one row per line item), not collapsed into a single line.
+- Any `- [ ]`/`- [x]` checklist items written under that milestone's own diary section appear
+  listed under it automatically.
+- A milestone with nothing logged against it yet still appears — as a plain heading — rather
+  than disappearing, or showing a fake $0.00.
+
+**Scope options**, when generating a Quote or Invoice:
+
+| Scope | Meaning |
+|-------|---------|
+| Since last invoice | Everything billed since the last `> INVOICED:` marker |
+| Future | Everything not yet logged as of today (dates are hidden here — nothing's actually scheduled yet) |
+| Whole job | Everything, start to finish |
+| Up to a milestone | Bill/quote everything through a named milestone, inclusive — useful for billing one completed phase at a time, regardless of where in the file it currently sits |
+| Since a milestone | Everything logged after a named milestone |
+
+Invoice deliberately offers a narrower set of these (no Future/Whole-job) — those don't make
+sense for a one-way billing action, so the dialog won't offer them there.
+
+The preflight preview (what you see before clicking Generate) always matches what Generate will
+actually produce — if it shows $0, that's really $0, not a preview bug.
+
+---
+
+## 12. Multiple projects, one client
 
 All projects under a client share the `acme/invoices/` folder and one invoice
 number sequence. `INV-2026-001` from the painting project and `INV-2026-002`
