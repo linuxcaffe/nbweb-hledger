@@ -72,6 +72,35 @@ A standalone read-only notebook shipped separately from the plugin. Profile-agno
 
 ---
 
+## Importing org-mode tutorials
+
+Much hledger documentation and community material is written in Emacs org-mode. `tools/org-to-nb-notes.py` (in the **nb-web** repo, not this one) converts an `.org` file into a folder of nb notes. It was used to build the `accts:tutorial/` notebook folder from the hledger beginner tutorial.
+
+```bash
+cd ~/dev/nb-web
+python3 tools/org-to-nb-notes.py \
+    ~/dev/awesome-hledger/contrib-resources/hledger-beginner-tutorial.org \
+    ~/.nb/accts/tutorial
+```
+
+**What it does:**
+1. Runs `pandoc -f org -t commonmark` (requires `pandoc`).
+2. Splits on `##` headings: each section becomes `NN_slug.md`, and any text before the first section becomes `00_overview.md`.
+3. Cleans each note:
+   - strips org's `; ` prose-comment prefix outside code fences (inside fences `;` stays, since it's hledger comment syntax)
+   - turns `$ hledger …` example lines into clickable `[cmd](term:cmd)` terminal links
+   - links mentions of other section titles as `[[stem|Title]]` wikilinks
+4. Adds frontmatter (`title:`, `type: tutorial`, `tags: [hledger, tutorial]`), writes the folder's `.index`, and commits.
+
+**Caveats:**
+- **Tags are hardcoded** to `hledger, tutorial`. Edit `main()` before converting non-hledger material.
+- **The optional third argument (notebook name) is ignored.**
+- **The script writes files directly, bypassing nb.** It replaces the target folder's `.index` but doesn't register a *new* folder in its parent's `.index`. Run `nb index reconcile` on the parent folder, or the new folder won't show in nb-web.
+- **It runs `git add -A` on the target's parent directory.** Commit or stash unrelated work in that notebook first, or it gets swept into the import commit.
+- **It's a one-shot import, not a sync.** Re-running overwrites the notes, including any hand edits.
+
+---
+
 ## Service business pack
 
 ### Project folder layout
