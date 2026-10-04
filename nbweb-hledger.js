@@ -975,11 +975,11 @@ function _buildCoaWizard(el, notebook, config) {
                 <button id="nb-hl-coa-preview" class="nb-tool-btn">Preview accounts</button>
                 <button id="nb-hl-coa-generate" class="nb-tool-btn nb-btn-primary">Generate accounts.journal</button>
                 <button id="nb-hl-coa-notes" class="nb-tool-btn">Create account notes</button>
-                <button id="nb-hl-coa-rebuild" class="nb-tool-btn" style="color:var(--orange,#e07b39)" title="Delete all type:account notes from this notebook">✕ Delete all accounts</button>
+                <button id="nb-hl-coa-rebuild" class="nb-tool-btn" style="color:var(--yellow)" title="Delete all type:account notes from this notebook">✕ Delete all accounts</button>
                 <span id="nb-hl-coa-status" style="font-size:12px;color:var(--text-dim)"></span>
             </div>
             <pre id="nb-hl-coa-preview-text" style="display:none;font-size:11px;max-height:200px;overflow-y:auto;
-                 background:var(--bg-alt,#1a1a1a);padding:8px;border-radius:4px;margin-top:8px;color:var(--text-dim)"></pre>
+                 background:var(--bg3);padding:8px;border-radius:4px;margin-top:8px;color:var(--text-dim)"></pre>
             <div id="nb-hl-coa-result" style="display:none;margin-top:8px"></div>
         </div>`;
 
@@ -1038,7 +1038,7 @@ function _buildCoaWizard(el, notebook, config) {
                 <span>${_esc(opt.label)}</span>
                 <input type="text" data-id="${opt.id}" placeholder="${_esc(opt.placeholder || '')}"
                        value="${_esc(saved[opt.id] ?? '')}"
-                       style="flex:1;font-size:12px;background:var(--bg-alt,#1a1a1a);color:inherit;
+                       style="flex:1;font-size:12px;background:var(--bg3);color:inherit;
                               border:1px solid var(--border,#333);border-radius:3px;padding:2px 6px">
                </label>`
             : `<label style="display:flex;gap:6px;align-items:center;cursor:pointer;padding:2px 0">
@@ -1095,7 +1095,7 @@ function _buildCoaWizard(el, notebook, config) {
                 createNotesBtn.style.display = '';
                 resultEl.style.display = 'block';
                 resultEl.innerHTML = `
-                    <div style="font-size:12px;background:var(--bg-alt,#1a1a1a);padding:8px;border-radius:4px;border:1px solid var(--border,#333)">
+                    <div style="font-size:12px;background:var(--bg3);padding:8px;border-radius:4px;border:1px solid var(--border,#333)">
                         <div style="color:var(--green,#4caf50);margin-bottom:4px">✓ Written to <code>${_esc(d.path)}</code></div>
                         ${d.include_needed ? `
                         <div style="margin-top:6px;color:var(--text-dim)">Add this line to your main journal:</div>
@@ -1229,7 +1229,7 @@ async function _buildBookkeeperPanel(el, notebook, config) {
         healthBody.innerHTML = '<span style="color:var(--green,#4caf50)">✓ No errors found</span>';
     } else {
         const msg = (healthR.status === 'fulfilled' ? healthR.value?.error : healthR.reason?.message) || 'check failed';
-        healthBody.innerHTML = `<pre class="nb-hl-bk-pre" style="color:var(--orange,#e07b39)">${_esc(msg)}</pre>`;
+        healthBody.innerHTML = `<pre class="nb-hl-bk-pre" style="color:var(--yellow)">${_esc(msg)}</pre>`;
     }
 
     function _renderText(r, fallback) {
