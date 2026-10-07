@@ -1699,7 +1699,7 @@ function _showInvoiceDialog(note, d) {
 
 async function _invoiceMarkPaid(note) {
     if (!note?.selector) return;
-    const payDate = prompt('Payment date (YYYY-MM-DD):', new Date().toISOString().slice(0, 10));
+    const payDate = prompt('Payment date (YYYY-MM-DD):', NbWeb.isoDate());
     if (!payDate) return;
     const raw = note.raw || '';
     // Update status: due → paid, add paid: date to FM
